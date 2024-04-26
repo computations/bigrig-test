@@ -25,11 +25,11 @@ class CladeMap:
     def clades(self):
         return self._clades
 
-
     def reverse_lookup(self, id):
         for k, v in self._clades.items():
             if v == id:
                 return k
+
 
 class BaseLog:
 
@@ -116,7 +116,6 @@ class BigrigLog(BaseLog):
         for node in self._tree.traverse("postorder"):
             if node.is_leaf() or node.name == '':
                 continue
-            print(self._distributions)
             self._vectors.add_distribution_vector(
                 node, self._make_vector(self._distributions[node.name]))
 
@@ -140,7 +139,6 @@ def compute_node_distance_list(log1: BaseLog, log2: BaseLog):
     distances = {}
 
     for c, d1, d2 in DistributionVectorGenerator(log1, log2):
-        print(d1)
         d = d1 - d2
         distances[c] = graph.Problem(d).normalized_dist()
 
