@@ -1,4 +1,7 @@
 from utils.configs import *
+import utils.logs as logs
+import csv
+import ete3
 
 workdir: config["prefix"]
 
@@ -28,7 +31,7 @@ rule make_bigrig_dataset:
   input:
     "bigrig/config.yaml"
   output:
-    "bigrig/results.phy"
+    "bigrig/results.phy", "bigrig/results.json"
   shell:
     "~/wrk/hits/bigrig/bin/bigrig --config {input}"
 
@@ -73,3 +76,18 @@ rule run_biogeobears:
     "biogeobears/results.Rdata"
   shell:
     "Rscript {input.script}"
+
+rule compute_distances:
+  input:
+    bigrig = "bigrig/results.json", lagrange="lagrange/analysis.results.json"
+  output:
+    "distances.csv"
+  run:
+    bigrig = logs.BigrigLog(input.bigrig)
+    lagrange = logs.LagrangeNGLog(input.lagrange)
+    with open(output[0] ,'w') as outfile:
+      writer = csv.DictWriter(outfile, ["clade", "software", "error"])
+      writer.writeheader()
+      distances = logs.compute_node_distance_list(bigrig, lagrange)
+      for clade, distance in distances.items():
+        writer.writerow({'clade': clade, 'software': 'lagrange', 'error': distance})
