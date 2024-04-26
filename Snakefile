@@ -7,7 +7,7 @@ workdir: config["prefix"]
 
 rule all:
   input:
-    "lagrange/tree.nwk.results.json"
+    "distances.csv"
 
 rule make_tree:
   output:
