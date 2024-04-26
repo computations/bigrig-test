@@ -92,4 +92,4 @@ rule compute_distances:
       distances = logs.compute_node_distance_list(bigrig, lagrange)
       for clade, distance in distances.items():
         clade_str = '|'.join(clade_map.reverse_lookup(clade))
-        writer.writerow({'clade': clade_str, 'software': 'lagrange', 'error': distance})
+        writer.writerow({'clade': clade_str, 'software': 'lagrange-ng', 'error': distance})
