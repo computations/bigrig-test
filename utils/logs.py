@@ -6,11 +6,37 @@ import utils.graph as graph
 import ete3
 
 
+class CladeMap:
+
+    def __init__(self):
+        self._clades = {}
+        self._next_index = 0
+
+    def _add_clade(self, clade):
+        self._clades[clade] = self._next_index
+        self._next_index += 1
+
+    def __getitem__(self, clade):
+        if not clade in self._clades:
+            self._add_clade(clade)
+        return self._clades[clade]
+
+    @property
+    def clades(self):
+        return self._clades
+
+
+    def reverse_lookup(self, id):
+        for k, v in self._clades.items():
+            if v == id:
+                return k
+
 class BaseLog:
 
-    def __init__(self, logfile):
+    def __init__(self, logfile, clade_map):
         self.logfile = logfile
-        self._vectors = vector.VectorCollection()
+        self._clade_map = clade_map
+        self._vectors = vector.VectorCollection(clade_map)
         self._setup()
 
     @property

@@ -6,16 +6,16 @@ import numpy
 
 class VectorCollection:
 
-    def __init__(self):
+    def __init__(self, clade_map):
         self._vectors = {}
+        self._clade_map = clade_map
 
     def add_distribution_vector(self, node: [ete3.TreeNode],
                                 vector: [numpy.ndarray]):
         self._vectors[self.convert_node_to_key(node)] = vector
 
-    @staticmethod
-    def convert_node_to_key(node: [ete3.TreeNode]):
-        return frozenset([leaf.name for leaf in node])
+    def convert_node_to_key(self, node: [ete3.TreeNode]):
+        return self._clade_map[frozenset([leaf.name for leaf in node])]
 
     @property
     def clades(self):

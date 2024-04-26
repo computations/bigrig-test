@@ -83,11 +83,13 @@ rule compute_distances:
   output:
     "distances.csv"
   run:
-    bigrig = logs.BigrigLog(input.bigrig)
-    lagrange = logs.LagrangeNGLog(input.lagrange)
+    clade_map = logs.CladeMap()
+    bigrig = logs.BigrigLog(input.bigrig, clade_map)
+    lagrange = logs.LagrangeNGLog(input.lagrange, clade_map)
     with open(output[0] ,'w') as outfile:
       writer = csv.DictWriter(outfile, ["clade", "software", "error"])
       writer.writeheader()
       distances = logs.compute_node_distance_list(bigrig, lagrange)
       for clade, distance in distances.items():
-        writer.writerow({'clade': clade, 'software': 'lagrange', 'error': distance})
+        clade_str = '|'.join(clade_map.reverse_lookup(clade))
+        writer.writerow({'clade': clade_str, 'software': 'lagrange', 'error': distance})
