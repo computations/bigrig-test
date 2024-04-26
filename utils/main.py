@@ -1,16 +1,64 @@
 #!/usr/bin/env python3
 
 import os
-import subprocess
-import yaml
-import numpy
 import shutil
+import subprocess
 
-BIGRIG_EXE = os.path.abspath("../bigrig/bin/bigrig")
-LAGRANGE_EXE = os.path.abspath("../lagrange-ng/bin/lagrange-ng")
+import numpy
+import yaml
+
+SRC_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
-class BigrigConfig:
+class BaseConfig:
+
+    @property
+    def tree(self):
+        """The treefile property."""
+        return self._tree
+
+    @tree.setter
+    def tree(self, value):
+        self._tree = os.path.abspath(value)
+
+    @property
+    def filename(self):
+        """The filename property."""
+        return self._filename
+
+    @filename.setter
+    def filename(self, value):
+        self._filename = os.path.abspath(value)
+
+    @property
+    def data(self):
+        """The data property."""
+        return self._data
+
+    @data.setter
+    def data(self, value):
+        self._data = os.path.abspath(value)
+
+    @property
+    def region_count(self):
+        """The region_count property."""
+        return self._region_count
+
+    @region_count.setter
+    def region_count(self, value):
+        self._region_count = value
+
+    @property
+    def prefix(self):
+        """The prefix property."""
+        return self._prefix
+
+    @prefix.setter
+    def prefix(self, value):
+        self._prefix = os.path.abspath(value)
+
+
+class BigrigConfig(BaseConfig):
 
     def __init__(self):
         pass
@@ -24,18 +72,21 @@ class BigrigConfig:
                     "root-range": self.root_range,
                     "tree": self.tree,
                     "output-format": self.output_format,
+                    "prefix": "bigrig/results",
                 }))
 
-    def _roll_params(self):
+    def roll_params(self):
         self._dispersion = 1.0
-        self._extinction = 2.0
+        self._extinction = 1.0
 
         self._allopatry = 1.0
         self._sympatry = 1.0
         self._jump = 0.0
         self._copy = 1.0
 
-        self._root_range = "".join(numpy.random.choice(["0", "1"], 5))
+        self._root_range = ""
+        while "1" not in self._root_range:
+            self._root_range = "".join(numpy.random.choice(["0", "1"], 5))
 
     @property
     def rates(self):
@@ -89,116 +140,20 @@ class BigrigConfig:
         return self._root_range
 
     @property
-    def tree(self):
-        """The tree property."""
-        return self._tree
-
-    @tree.setter
-    def tree(self, value):
-        self._tree = os.path.abspath(value)
-
-    @property
-    def prefix_base(self):
-        return "results"
-
-    @property
     def output_format(self):
         return "json"
 
-    @property
-    def iter(self):
-        """The iter property."""
-        return self._iter
 
-    @iter.setter
-    def iter(self, value):
-        self._iter = value
+class LagrangeConfig(BaseConfig):
 
-    @property
-    def filename(self):
-        """The filename property."""
-        return self._filename
-
-    @filename.setter
-    def filename(self, value):
-        self._filename = os.path.abspath(value)
-
-
-class BigrigIter:
-
-    def __init__(self, iter, config=None):
-        self._iter = iter
-
-    def _make_config(self):
-        self._config = BigrigConfig()
-        self._config.filename = os.path.join(self.run_prefix, "test.conf")
-        self._config._tree = "test.nwk"
-        self._config._roll_params()
-
-    @property
-    def run_prefix(self):
-        """The run_prefix property."""
-        return self._run_prefix
-
-    @run_prefix.setter
-    def run_prefix(self, value):
-        self._run_prefix = os.path.abspath(value)
-        if not os.path.exists(self._run_prefix):
-            os.mkdir(self._run_prefix)
-
-    @property
-    def iter_prefix(self):
-        """The iter_prefix property."""
-        return os.path.join(self.run_prefix, str(self._iter))
-
-    @property
-    def prefix(self):
-        """The prfix property."""
-        return os.path.join(self.iter_prefix, self._config.prefix_base)
-
-    @property
-    def treefile(self):
-        tree_basename = os.path.basename(self.config.tree)
-        return os.path.join(self.iter_prefix, tree_basename)
-
-    @property
-    def datafile(self):
-        return os.path.abspath(self.prefix + ".phy")
-
-    def _copy_files(self):
-        shutil.copy(self.config.tree, self.treefile)
-
-    def run(self):
-        self._make_config()
-        self._config.write_config()
-
-        cmd = BIGRIG_EXE + " --config {config} --prefix {prefix}".format(
-            config=self._config.filename, prefix=self.prefix)
-        cmd = cmd.split()
-        subprocess.run(cmd)
-
-        self._copy_files()
-
-    @property
-    def config(self):
-        return self._config
-
-
-class LagrangeIter:
-
-    def __init__(self, bigrig_iter):
-        self._bigrig = bigrig_iter
-
-    @property
-    def config_filename(self):
-        """The config_filename property."""
-        return os.path.join(self._bigrig.iter_prefix, "lagrange.conf")
+    def __init__(self):
+        pass
 
     def _config_tree_line(self):
-        return "treefile = {}".format(self._bigrig.treefile) + "\n"
+        return "treefile = {}".format(self.tree) + "\n"
 
     def _config_data_line(self):
-        return "datafile = {}".format(self._bigrig.datafile) + "\n"
+        return "datafile = {}".format(self.data) + "\n"
 
     def _config_areanames_line(self):
         return "areanames = RA RB RC RD RE" + "\n"
@@ -209,24 +164,40 @@ class LagrangeIter:
     def _config_workers_line(self):
         return "workers = 1" + "\n"
 
+    def _config_prefix_line(self):
+        return "prefix = {}".format(self.prefix) + "\n"
+
     def write_config(self):
-        with open(self.config_filename, 'w') as outfile:
+        with open(self.filename, 'w') as outfile:
             outfile.write(self._config_tree_line())
             outfile.write(self._config_data_line())
             outfile.write(self._config_areanames_line())
             outfile.write(self._config_states_line())
             outfile.write(self._config_workers_line())
-
-    def run(self):
-        self.write_config()
-
-        cmd = LAGRANGE_EXE + " {config}".format(config=self.config_filename)
-        cmd = cmd.split()
-        subprocess.run(cmd)
+            outfile.write(self._config_prefix_line())
 
 
-iter = BigrigIter(0)
-iter.run_prefix = "trial"
-iter.run()
-lagrange = LagrangeIter(iter)
-lagrange.run()
+class BioGeoBEARSConfig(BaseConfig):
+
+    def __init__(self):
+        pass
+
+    @property
+    def base_script(self):
+        return os.path.join(SRC_PATH, "biogeobears.r")
+
+    def _copy_files(self):
+        with open(self.filename, 'w') as outfile:
+            script = open(self.base_script).read()
+            outfile.write(
+                script.format(tree=self.tree,
+                              data=self.data,
+                              results=self.results))
+
+    @property
+    def results(self):
+        """The results property."""
+        return os.path.join(self.prefix, "results.Rdata")
+
+    def write_config(self):
+        self._copy_files()
