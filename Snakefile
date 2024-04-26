@@ -1,4 +1,4 @@
-from utils.main import *
+from utils.configs import *
 
 workdir: config["prefix"]
 
