@@ -1,2 +1,5 @@
-node_count: 10
 prefix: test
+treeSizes: 
+  - 10 
+  - 20
+parameters: 2

@@ -124,6 +124,18 @@ class BigrigLog(BaseLog):
         ret[distribution] = 1.0
         return ret
 
+    def parameters(self):
+        p = self._log['periods'][0]
+        return {
+            'allopatry': p['cladogenesis']['allopatry'],
+            'sympatry': p['cladogenesis']['sympatry'],
+            'copy': p['cladogenesis']['copy'],
+            'jump': p['cladogenesis']['jump'],
+            'dispersion': p['rates']['dispersion'],
+            'extinction': p['rates']['extinction'],
+            'root-range': self._log["align"]["0"],
+        }
+
 
 def DistributionVectorGenerator(log1: BaseLog, log2: BaseLog):
     v1 = log1.vectors

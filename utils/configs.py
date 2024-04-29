@@ -63,6 +63,22 @@ class BigrigConfig(BaseConfig):
     def __init__(self):
         pass
 
+    def load(self, filename):
+        with open(filename) as infile:
+            y = yaml.load(infile, Loader=yaml.Loader)
+            self._dispersion = y['rates']['dispersion']
+            self._extinction = y['rates']['extinction']
+
+            self._allopatry = y['cladogenesis']['allopatry']
+            self._sympatry = y['cladogenesis']['sympatry']
+            self._copy = y['cladogenesis']['copy']
+            self._jump = y['cladogenesis']['jump']
+
+            self._prefix = y['prefix']
+
+            self._tree = y['tree']
+            self._root_range = y['root-range']
+
     def write_config(self):
         with open(self.filename, 'w') as outfile:
             outfile.write(
@@ -72,7 +88,7 @@ class BigrigConfig(BaseConfig):
                     "root-range": self.root_range,
                     "tree": self.tree,
                     "output-format": self.output_format,
-                    "prefix": "bigrig/results",
+                    "prefix": self.prefix,
                 }))
 
     def roll_params(self):
