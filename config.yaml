@@ -1,7 +1,11 @@
 prefix: test
 treeSizes: 
   - 10
-parameters: 2
+parameters: 30
 ranges: 
-  - 3
-  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+programs:
+  - lagrange

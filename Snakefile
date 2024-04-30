@@ -3,6 +3,7 @@ import utils.logs as logs
 import csv
 import ete3
 import pathlib
+import functools
 
 
 workdir: config["prefix"]
@@ -107,12 +108,12 @@ rule run_biogeobears:
         "Rscript {input.script} &> {log}"
 
 
-rule compute_distances:
+rule compute_distances_lagrange:
     input:
         bigrig="{tree_iter}/{bigrig_iter}_{range_iter}/bigrig/results.json",
         lagrange="{tree_iter}/{bigrig_iter}_{range_iter}/lagrange/analysis.results.json",
     output:
-        "{tree_iter}/{bigrig_iter}_{range_iter}/distances.csv",
+        "{tree_iter}/{bigrig_iter}_{range_iter}/lagrange/distances.csv",
     run:
         clade_map = logs.CladeMap()
         bigrig = logs.BigrigLog(input.bigrig, clade_map)
@@ -139,11 +140,26 @@ rule compute_distances:
               row = row | bigrig_params
               writer.writerow(row)
 
+rule coalece_distances:
+    input:
+        expand("{{tree_iter}}/{{bigrig_iter}}_{{range_iter}}/{program}/distances.csv",
+        program = config['programs'])
+    output:
+        "{tree_iter}/{bigrig_iter}_{range_iter}/c_distances.csv",
+    run:
+        with open(output[0], 'w') as csvfile:
+          writer = csv.DictWriter(csvfile, fieldnames=distance_fields)
+          writer.writeheader()
+          for input_file in input:
+            reader = csv.DictReader(open(input_file))
+            for row in reader:
+              writer.writerow(row)
+
 
 rule combine_distances:
     input:
         distances=expand(
-            "{tree_iter}/{bigrig_iter}_{range_iter}/distances.csv",
+            "{tree_iter}/{bigrig_iter}_{range_iter}/c_distances.csv",
             tree_iter=range(config['tree_count']),
             bigrig_iter=range(config['parameters']),
             range_iter = range(config['range_count']),
