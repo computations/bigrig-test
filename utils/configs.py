@@ -3,13 +3,52 @@
 import os
 import shutil
 import subprocess
-
 import numpy
 import yaml
+from dataclasses import dataclass
 
 import utils.util
 
 SRC_PATH = os.path.dirname(os.path.abspath(__file__))
+
+
+@dataclass
+class UniformDistribution:
+    start: float
+    end: float
+
+
+@dataclass
+class GammaDistribution:
+    shape: float
+    scale: float
+
+
+@dataclass
+class LogNormalDistribution:
+    mu: float
+    sigma: float
+
+
+@dataclass
+class InverseGaussianDistribution:
+    mu: float
+    l: float
+
+
+Distribution = UniformDistribution | GammaDistribution | LogNormalDistribution | InverseGaussianDistribution
+
+
+def make_rate_distribution(type, **kwargs):
+    match type:
+        case "Uniform":
+            return UniformDistribution(kwargs['a'], kwargs['b'])
+        case "Gamma":
+            return GammaDistribution(kwargs['k'], kwargs['theta'])
+        case "LogNormal":
+            return LogNormalDistribution(kwargs['mu'], kwargs['sigma'])
+        case "InverseGaussian":
+            return InverseGaussianDistribution(kwargs['mu'], kwargs['lambda'])
 
 
 class BaseConfig:
@@ -74,22 +113,6 @@ class BigrigConfig(BaseConfig):
     def __init__(self):
         pass
 
-    def load(self, filename):
-        with open(filename) as infile:
-            y = yaml.load(infile, Loader=yaml.Loader)
-            self._dispersion = y['rates']['dispersion']
-            self._extinction = y['rates']['extinction']
-
-            self._allopatry = y['cladogenesis']['allopatry']
-            self._sympatry = y['cladogenesis']['sympatry']
-            self._copy = y['cladogenesis']['copy']
-            self._jump = y['cladogenesis']['jump']
-
-            self._prefix = y['prefix']
-
-            self._tree = y['tree']
-            self._root_range = y['root-range']
-
     def write_config(self):
         with open(self.filename, 'w') as outfile:
             outfile.write(
@@ -103,8 +126,18 @@ class BigrigConfig(BaseConfig):
                 }))
 
     def roll_params(self):
-        self._dispersion = numpy.random.uniform(0.0, 1.0)
-        self._extinction = numpy.random.uniform(0.0, 1.0)
+        match self.rate_distribution:
+            case UniformDistribution(a, b):
+                rate_dist = lambda: numpy.random.uniform(a, b)
+            case GammaDistribution(k, theta):
+                rate_dist = lambda: numpy.random.gamma(k, theta)
+            case LogNormalDistribution(mu, sigma):
+                rate_dist = lambda: numpy.random.lognormal(mu, sigma)
+            case InverseGaussianDistribution(mu, l):
+                rate_dist = lambda: numpy.random.wald(mu, l)
+
+        self._dispersion = rate_dist()
+        self._extinction = rate_dist()
 
         self._allopatry = 1.0
         self._sympatry = 1.0
@@ -137,6 +170,15 @@ class BigrigConfig(BaseConfig):
             "copy": self.copy,
         }
         return self._cladogenesis
+
+    @property
+    def rate_distribution(self):
+        """The rate_distribution property."""
+        return self._rate_distribution
+
+    @rate_distribution.setter
+    def rate_distribution(self, value: Distribution):
+        self._rate_distribution = value
 
     @property
     def dispersion(self):

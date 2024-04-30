@@ -1,11 +1,16 @@
 prefix: test
 treeSizes: 
   - 10
-parameters: 30
+parameters:
+  - type: InverseGaussian
+    mu: 1.0
+    lambda: 1.0
+  - type: LogNormal
+    mu: 1.0
+    sigma: 0.1
 ranges: 
   - 5
   - 6
-  - 7
-  - 8
 programs:
   - lagrange
+repeats: 2
