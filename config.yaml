@@ -1,5 +1,7 @@
 prefix: test
 treeSizes: 
-  - 10 
-  - 20
+  - 10
 parameters: 2
+ranges: 
+  - 3
+  - 4

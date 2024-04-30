@@ -59,7 +59,7 @@ class BaseLog:
 
     @property
     def taxa(self):
-        if getattr(self, "_taxa") is None:
+        if not hasattr(self, "_taxa"):
             self._taxa = 0
             for node in self._tree:
                 if not node.is_leaf():
@@ -134,7 +134,14 @@ class BigrigLog(BaseLog):
             'dispersion': p['rates']['dispersion'],
             'extinction': p['rates']['extinction'],
             'root-range': self._log["align"]["0"],
+            'ranges': self.ranges
         }
+
+    @property
+    def ranges(self):
+        if not hasattr(self, "_ranges"):
+            self._ranges = len(self._log["align"]["0"])
+        return self._ranges
 
 
 def DistributionVectorGenerator(log1: BaseLog, log2: BaseLog):
