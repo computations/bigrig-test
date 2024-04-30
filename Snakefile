@@ -22,7 +22,7 @@ rule make_tree:
     params:
       size = lambda wildcards: config['treeSizes'][int(wildcards['tree_iter'])]
     shell:
-        "treegen --size {params.size} > {output}"
+        "treegen -u --size  {params.size} > {output}"
 
 
 rule setup_bigrig_config:
