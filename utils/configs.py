@@ -7,6 +7,8 @@ import subprocess
 import numpy
 import yaml
 
+import utils.util
+
 SRC_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -57,6 +59,15 @@ class BaseConfig:
     def prefix(self, value):
         self._prefix = os.path.abspath(value)
 
+    @property
+    def range_count(self):
+        """The range_count property."""
+        return self._range_count
+
+    @range_count.setter
+    def range_count(self, value):
+        self._range_count = int(value)
+
 
 class BigrigConfig(BaseConfig):
 
@@ -92,8 +103,8 @@ class BigrigConfig(BaseConfig):
                 }))
 
     def roll_params(self):
-        self._dispersion = 1.0
-        self._extinction = 1.0
+        self._dispersion = numpy.random.uniform(0.0, 1.0)
+        self._extinction = numpy.random.uniform(0.0, 1.0)
 
         self._allopatry = 1.0
         self._sympatry = 1.0
@@ -102,7 +113,8 @@ class BigrigConfig(BaseConfig):
 
         self._root_range = ""
         while "1" not in self._root_range:
-            self._root_range = "".join(numpy.random.choice(["0", "1"], 5))
+            self._root_range = "".join(
+                numpy.random.choice(["0", "1"], self.range_count))
 
     @property
     def rates(self):
@@ -172,7 +184,10 @@ class LagrangeConfig(BaseConfig):
         return "datafile = {}".format(self.data) + "\n"
 
     def _config_areanames_line(self):
-        return "areanames = RA RB RC RD RE" + "\n"
+        area_list = (
+            n for _, n in zip(range(self.range_count),
+                              utils.util.base26_generator(self.range_count)))
+        return "areanames = {}".format(' '.join(area_list)) + "\n"
 
     def _config_states_line(self):
         return "states" + "\n"

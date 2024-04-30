@@ -29,12 +29,13 @@ rule setup_bigrig_config:
     output:
         "{tree_iter}/{bigrig_iter}/bigrig/config.yaml",
     run:
-        config = BigrigConfig()
-        config.filename = output[0]
-        config.tree = input[0]
-        config.prefix = os.path.join(os.path.dirname(output[0]), "results")
-        config.roll_params()
-        config.write_config()
+        bigrig_config = BigrigConfig()
+        bigrig_config.filename = output[0]
+        bigrig_config.tree = input[0]
+        bigrig_config.prefix = os.path.join(os.path.dirname(output[0]), "results")
+        bigrig_config.range_count = config['ranges']
+        bigrig_config.roll_params()
+        bigrig_config.write_config()
 
 
 rule make_bigrig_dataset:
@@ -43,8 +44,10 @@ rule make_bigrig_dataset:
     output:
         "{tree_iter}/{bigrig_iter}/bigrig/results.phy",
         "{tree_iter}/{bigrig_iter}/bigrig/results.json",
+    log:
+        "{tree_iter}/{bigrig_iter}/bigrig/bigrig.log",
     shell:
-        "~/wrk/hits/bigrig/bin/bigrig --config {input}"
+        "~/wrk/hits/bigrig/bin/bigrig --config {input} &> {log}"
 
 
 rule setup_lagrange_config:
@@ -54,24 +57,25 @@ rule setup_lagrange_config:
     output:
         "{tree_iter}/{bigrig_iter}/lagrange/lagrange.conf",
     run:
-        config = LagrangeConfig()
-        config.filename = output[0]
-        config.prefix = os.path.join(os.path.dirname(output[0]), "analysis")
-        config.tree = input.tree
-        config.data = input.data
-        config.write_config()
+        lagrange_config = LagrangeConfig()
+        lagrange_config.filename = output[0]
+        lagrange_config.prefix = os.path.join(os.path.dirname(output[0]), "analysis")
+        lagrange_config.tree = input.tree
+        lagrange_config.data = input.data
+        lagrange_config.range_count = config['ranges']
+        lagrange_config.write_config()
 
 
 rule run_lagrange:
     input:
-        tree="{tree_iter}/tree.nwk",
-        data="{tree_iter}/{bigrig_iter}/bigrig/results.phy",
         config="{tree_iter}/{bigrig_iter}/lagrange/lagrange.conf",
     output:
         "{tree_iter}/{bigrig_iter}/lagrange/analysis.results.json",
+    log:
+        "{tree_iter}/{bigrig_iter}/lagrange/lagrange.log",
     shell:
-        "~/wrk/hits/lagrange-ng/bin/lagrange-ng {input.config}"
-
+        "~/wrk/hits/lagrange-ng/bin/lagrange-ng {input.config} &> {log}"
+ 
 
 rule setup_biogeobears_config:
     input:
@@ -80,12 +84,12 @@ rule setup_biogeobears_config:
     output:
         "{tree_iter}/{bigrig_iter}/biogeobears/script.r",
     run:
-        config = BioGeoBEARSConfig()
-        config.filename = output[0]
-        config.tree = input.tree
-        config.data = input.data
-        config.prefix = "biogeobears"
-        config.write_config()
+        biogebears_config = BioGeoBEARSConfig()
+        biogebears_config.filename = output[0]
+        biogebears_config.tree = input.tree
+        biogebears_config.data = input.data
+        biogebears_config.prefix = "biogeobears"
+        biogebears_config.write_config()
 
 
 rule run_biogeobears:
@@ -95,8 +99,10 @@ rule run_biogeobears:
         script="{tree_iter}/{bigrig_iter}/biogeobears/script.r",
     output:
         "{tree_iter}/{bigrig_iter}/biogeobears/results.Rdata",
+    log:
+        "{tree_iter}/{bigrig_iter}/biogeobears/biogeobears.log",
     shell:
-        "Rscript {input.script}"
+        "Rscript {input.script} &> {log}"
 
 
 rule compute_distances:
@@ -115,21 +121,24 @@ rule compute_distances:
         with open(output[0], "w") as outfile:
             fields = ['clade', 'software', 'error', 'dispersion', 'extinction',
             'allopatry', 'sympatry', 'copy', 'jump', 'root-range', 'tree-iter',
-            'bigrig-iter']
+            'bigrig-iter', 'clade-size']
             writer = csv.DictWriter(outfile, fieldnames=fields)
             writer.writeheader()
             distances = logs.compute_node_distance_list(bigrig, lagrange)
             for clade, distance in distances.items():
-                clade_str = "|".join(clade_map.reverse_lookup(clade))
-                row = {
-                  "clade": clade_str, 
-                  "software": "lagrange-ng", 
-                  "error": distance,
-                  "bigrig-iter": wildcards.bigrig_iter,
-                  "tree-iter": wildcards.tree_iter,
-                  }
-                row = row | bigrig_params
-                writer.writerow( row)
+              clade_list = clade_map.reverse_lookup(clade)
+              clade_size = len(clade_list)
+              clade_str = "|".join(clade_list)
+              row = {
+                "clade": clade_str, 
+                "software": "lagrange-ng", 
+                "error": distance,
+                "bigrig-iter": wildcards.bigrig_iter,
+                "tree-iter": wildcards.tree_iter,
+                "clade-size": clade_size,
+                }
+              row = row | bigrig_params
+              writer.writerow( row)
 
 
 rule combine_distances:
@@ -150,7 +159,7 @@ rule combine_distances:
         with open(output[0], 'w') as csvfile:
           fields = ['clade', 'software', 'error', 'dispersion', 'extinction',
           'allopatry', 'sympatry', 'copy', 'jump', 'root-range', 'tree-iter',
-          'bigrig-iter']
+          'bigrig-iter', 'clade-size']
           writer = csv.DictWriter(csvfile, fieldnames=fields)
           writer.writeheader()
           for distances, config_filename in zip(input.distances, input.configs):
