@@ -13,6 +13,12 @@ SRC_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
 @dataclass
+class StaticDistribution:
+    dispersion: float
+    extinction: float
+
+
+@dataclass
 class UniformDistribution:
     start: float
     end: float
@@ -36,11 +42,14 @@ class InverseGaussianDistribution:
     l: float
 
 
-Distribution = UniformDistribution | GammaDistribution | LogNormalDistribution | InverseGaussianDistribution
+Distribution = StaticDistribution | UniformDistribution | GammaDistribution | LogNormalDistribution | InverseGaussianDistribution
 
 
 def make_rate_distribution(type, **kwargs):
     match type:
+        case "Static":
+            return StaticDistribution(kwargs['dispersion'],
+                                      kwargs['extinction'])
         case "Uniform":
             return UniformDistribution(kwargs['a'], kwargs['b'])
         case "Gamma":
@@ -127,17 +136,23 @@ class BigrigConfig(BaseConfig):
 
     def roll_params(self):
         match self.rate_distribution:
+            case StaticDistribution(dis, ext):
+                rate_dist = lambda: (dis, ext)
             case UniformDistribution(a, b):
-                rate_dist = lambda: numpy.random.uniform(a, b)
+                rate_dist = lambda: (float(f)
+                                     for f in numpy.random.uniform(a, b, 2))
             case GammaDistribution(k, theta):
-                rate_dist = lambda: numpy.random.gamma(k, theta)
+                rate_dist = lambda: (float(f) for f in numpy.random.gamma(k,
+                                                                          theta,
+                                                                          2))
             case LogNormalDistribution(mu, sigma):
-                rate_dist = lambda: numpy.random.lognormal(mu, sigma)
+                rate_dist = lambda: (
+                    float(f) for f in numpy.random.lognormal(mu, sigma, 2))
             case InverseGaussianDistribution(mu, l):
-                rate_dist = lambda: numpy.random.wald(mu, l)
+                rate_dist = lambda: (float(f)
+                                     for f in numpy.random.wald(mu, l, 2))
 
-        self._dispersion = rate_dist()
-        self._extinction = rate_dist()
+        self._dispersion, self._extinction = rate_dist()
 
         self._allopatry = 1.0
         self._sympatry = 1.0
