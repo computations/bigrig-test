@@ -11,52 +11,89 @@ SRC_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
 @dataclass
-class StaticDistribution:
+class StaticRateDistribution:
     dispersion: float
     extinction: float
 
 
 @dataclass
-class UniformDistribution:
+class UniformRateDistribution:
     start: float
     end: float
 
 
 @dataclass
-class GammaDistribution:
+class GammaRateDistribution:
     shape: float
     scale: float
 
 
 @dataclass
-class LogNormalDistribution:
+class LogNormalRateDistribution:
     mu: float
     sigma: float
 
 
 @dataclass
-class InverseGaussianDistribution:
+class InverseGaussianRateDistribution:
     mu: float
     l: float
 
 
-Distribution = StaticDistribution | UniformDistribution | GammaDistribution \
-    | LogNormalDistribution | InverseGaussianDistribution
+RateDistribution = StaticRateDistribution | UniformRateDistribution \
+    | GammaRateDistribution | LogNormalRateDistribution \
+    | InverseGaussianRateDistribution
 
 
 def make_rate_distribution(type, **kwargs):
     match type:
         case "Static":
-            return StaticDistribution(kwargs['dispersion'],
-                                      kwargs['extinction'])
+            return StaticRateDistribution(kwargs['dispersion'],
+                                          kwargs['extinction'])
         case "Uniform":
-            return UniformDistribution(kwargs['a'], kwargs['b'])
+            return UniformRateDistribution(kwargs['a'], kwargs['b'])
         case "Gamma":
-            return GammaDistribution(kwargs['k'], kwargs['theta'])
+            return GammaRateDistribution(kwargs['k'], kwargs['theta'])
         case "LogNormal":
-            return LogNormalDistribution(kwargs['mu'], kwargs['sigma'])
+            return LogNormalRateDistribution(kwargs['mu'], kwargs['sigma'])
         case "InverseGaussian":
-            return InverseGaussianDistribution(kwargs['mu'], kwargs['lambda'])
+            return InverseGaussianRateDistribution(
+                kwargs['mu'], kwargs['lambda'])
+
+
+@dataclass
+class StaticCladoDistribution:
+    allopatry: float
+    sympatry: float
+    copy: float
+    jump: float
+
+
+@dataclass
+class DirichletCladoDistribution:
+    allopatry: float
+    sympatry: float
+    copy: float
+    jump: float
+
+
+CladoDistribution = StaticCladoDistribution | DirichletCladoDistribution
+
+
+def make_clado_distribution(type, **kwargs):
+    match type:
+        case "Static":
+            return StaticCladoDistribution(
+                kwargs['allopatry'],
+                kwargs['sympatry'],
+                kwargs['copy'],
+                kwargs['jump'])
+        case "Dirichlet":
+            return DirichletCladoDistribution(
+                kwargs['allopatry'],
+                kwargs['sympatry'],
+                kwargs['copy'],
+                kwargs['jump'])
 
 
 class BaseConfig:
@@ -134,29 +171,43 @@ class BigrigConfig(BaseConfig):
                 }))
 
     def roll_params(self):
+        self.roll_rate_params()
+        self.roll_clado_params()
+        self.roll_root_range()
+
+    def roll_rate_params(self):
         match self.rate_distribution:
-            case StaticDistribution(dis, ext):
+            case StaticRateDistribution(dis, ext):
                 def rate_dist(): return (dis, ext)
-            case UniformDistribution(a, b):
+            case UniformRateDistribution(a, b):
                 def rate_dist(): return (float(f) for f in
                                          numpy.random.uniform(a, b, 2))
-            case GammaDistribution(k, theta):
+            case GammaRateDistribution(k, theta):
                 def rate_dist(): return (float(f) for
                                          f in numpy.random.gamma(k, theta, 2))
-            case LogNormalDistribution(mu, sigma):
+            case LogNormalRateDistribution(mu, sigma):
                 def rate_dist(): return (
                     float(f) for f in numpy.random.lognormal(mu, sigma, 2))
-            case InverseGaussianDistribution(mu, l):
+            case InverseGaussianRateDistribution(mu, l):
                 def rate_dist(): return (float(f)
                                          for f in numpy.random.wald(mu, l, 2))
 
         self._dispersion, self._extinction = rate_dist()
 
-        self._allopatry = 1.0
-        self._sympatry = 1.0
-        self._jump = 0.0
-        self._copy = 1.0
+    def roll_clado_params(self):
+        match self.clado_distribution:
+            case StaticCladoDistribution(allopatry, sympatry, copy, jump):
+                def clado_dist(): return (allopatry, sympatry, copy, jump)
+            case DirichletCladoDistribution(allopatry, sympatry, copy, jump):
+                def clado_dist(): return (
+                    float(f) for f in numpy.random.dirichlet(
+                        (allopatry,
+                         sympatry,
+                         copy, jump), 1).transpose())
 
+        self._allopatry, self._sympatry, self._jump, self._copy = clado_dist()
+
+    def roll_root_range(self):
         self._root_range = ""
         while "1" not in self._root_range:
             self._root_range = "".join(
@@ -190,8 +241,17 @@ class BigrigConfig(BaseConfig):
         return self._rate_distribution
 
     @rate_distribution.setter
-    def rate_distribution(self, value: Distribution):
+    def rate_distribution(self, value: RateDistribution):
         self._rate_distribution = value
+
+    @property
+    def clado_distribution(self):
+        """The rate_distribution property."""
+        return self._clado_distribution
+
+    @clado_distribution.setter
+    def clado_distribution(self, value: CladoDistribution):
+        self._clado_distribution = value
 
     @property
     def dispersion(self):

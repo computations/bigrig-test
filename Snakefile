@@ -14,7 +14,8 @@ workdir: config["prefix"]
 
 config["tree_count"] = len(config["treeSizes"])
 config["range_count"] = len(config["ranges"])
-config["params_count"] = len(config["parameters"])
+config["rate_params_count"] = len(config["rate-parameters"])
+config["clado_params_count"] = len(config["clado-parameters"])
 
 distance_fields = [
     "clade",
@@ -65,7 +66,7 @@ rule setup_bigrig_config:
     input:
         "{tree_iter}/tree.nwk",
     output:
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/config.yaml",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/config.yaml",
     run:
         bigrig_config = BigrigConfig()
         bigrig_config.filename = output[0]
@@ -73,7 +74,10 @@ rule setup_bigrig_config:
         bigrig_config.prefix = os.path.join(os.path.dirname(output[0]), "results")
         bigrig_config.range_count = config["ranges"][int(wildcards.range_iter)]
         bigrig_config.rate_distribution = utils.configs.make_rate_distribution(
-            **config["parameters"][int(wildcards.param_iter)]
+            **config["rate-parameters"][int(wildcards.rate_param_iter)]
+        )
+        bigrig_config.clado_distribution = utils.configs.make_clado_distribution(
+            **config["clado-parameters"][int(wildcards.clado_param_iter)]
         )
         bigrig_config.roll_params()
         bigrig_config.write_config()
@@ -81,12 +85,12 @@ rule setup_bigrig_config:
 
 rule make_bigrig_dataset:
     input:
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/config.yaml",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/config.yaml",
     output:
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/results.json",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.json",
     log:
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/bigrig.log",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/bigrig.log",
     shell:
         "~/wrk/hits/bigrig/bin/bigrig --config {input} &> {log}"
 
@@ -94,9 +98,9 @@ rule make_bigrig_dataset:
 rule setup_lagrange_config:
     input:
         tree="{tree_iter}/tree.nwk",
-        data="{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
+        data="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
     output:
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/lagrange/lagrange.conf",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/lagrange/lagrange.conf",
     run:
         lagrange_config = LagrangeConfig()
         lagrange_config.filename = output[0]
@@ -109,11 +113,11 @@ rule setup_lagrange_config:
 
 rule run_lagrange:
     input:
-        config="{tree_iter}/{param_iter}_{range_iter}/{repeat}/lagrange/lagrange.conf",
+        config="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/lagrange/lagrange.conf",
     output:
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/lagrange/analysis.results.json",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/lagrange/analysis.results.json",
     log:
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/lagrange/lagrange.log",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/lagrange/lagrange.log",
     shell:
         "~/wrk/hits/lagrange-ng/bin/lagrange-ng {input.config} &> {log}"
 
@@ -121,9 +125,9 @@ rule run_lagrange:
 rule setup_biogeobears_config:
     input:
         tree="{tree_iter}/tree.nwk",
-        data="{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
+        data="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
     output:
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/biogeobears/script.r",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/biogeobears/script.r",
     run:
         biogebears_config = BioGeoBEARSConfig()
         biogebears_config.filename = output[0]
@@ -136,22 +140,22 @@ rule setup_biogeobears_config:
 rule run_biogeobears:
     input:
         tree="{tree_iter}/tree.nwk",
-        data="{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
-        script="{tree_iter}/{param_iter}_{range_iter}/{repeat}/biogeobears/script.r",
+        data="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
+        script="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/biogeobears/script.r",
     output:
-        "{tree_iter}/{param_iter}/biogeobears/results.Rdata",
+        "{tree_iter}/{rate_param_iter}/biogeobears/results.Rdata",
     log:
-        "{tree_iter}/{param_iter}/biogeobears/biogeobears.log",
+        "{tree_iter}/{rate_param_iter}/biogeobears/biogeobears.log",
     shell:
         "Rscript {input.script} &> {log}"
 
 
 rule compute_distances_lagrange:
     input:
-        bigrig="{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/results.json",
-        lagrange="{tree_iter}/{param_iter}_{range_iter}/{repeat}/lagrange/analysis.results.json",
+        bigrig="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.json",
+        lagrange="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/lagrange/analysis.results.json",
     output:
-        "{tree_iter}/{param_iter}_{range_iter}/{repeat}/lagrange/distances.csv",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/lagrange/distances.csv",
     run:
         clade_map = logs.CladeMap()
         bigrig = logs.BigrigLog(input.bigrig, clade_map)
@@ -171,7 +175,7 @@ rule compute_distances_lagrange:
                     "clade": clade_str,
                     "software": "lagrange-ng",
                     "error": distance,
-                    "bigrig-iter": wildcards.param_iter,
+                    "bigrig-iter": wildcards.rate_param_iter,
                     "tree-iter": wildcards.tree_iter,
                     "clade-size": clade_size,
                 }
@@ -182,12 +186,12 @@ rule compute_distances_lagrange:
 rule coalece_distances:
     input:
         expand(
-            "{{tree_iter}}/{{param_iter}}_{{range_iter}}/{repeat}/{program}/distances.csv",
+            "{{tree_iter}}/{{rate_param_iter}}_{{clado_param_iter}}_{{range_iter}}/{repeat}/{program}/distances.csv",
             program=config["programs"],
             repeat=range(config["repeats"]),
         ),
     output:
-        "{tree_iter}/{param_iter}_{range_iter}/c_distances.csv",
+        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/c_distances.csv",
     run:
         with open(output[0], "w") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=distance_fields)
@@ -201,9 +205,10 @@ rule coalece_distances:
 rule time_bigrig:
     input:
         logs=expand(
-            "{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/results.json",
+            "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.json",
             tree_iter=range(config["tree_count"]),
-            param_iter=range(config["params_count"]),
+            rate_param_iter=range(config["rate_params_count"]),
+            clado_param_iter=range(config["clado_params_count"]),
             range_iter=range(config["range_count"]),
             repeat=range(config["repeats"])
         )
@@ -227,9 +232,10 @@ rule time_bigrig:
 rule combine_distances:
     input:
         distances=expand(
-            "{tree_iter}/{param_iter}_{range_iter}/c_distances.csv",
+            "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/c_distances.csv",
             tree_iter=range(config["tree_count"]),
-            param_iter=range(config["params_count"]),
+            rate_param_iter=range(config["rate_params_count"]),
+            clado_param_iter=range(config["clado_params_count"]),
             range_iter=range(config["range_count"]),
         ),
     output:
