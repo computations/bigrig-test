@@ -199,11 +199,20 @@ class BigrigConfig(BaseConfig):
             case StaticCladoDistribution(allopatry, sympatry, copy, jump):
                 def clado_dist(): return (allopatry, sympatry, copy, jump)
             case DirichletCladoDistribution(allopatry, sympatry, copy, jump):
-                def clado_dist(): return (
-                    float(f) for f in numpy.random.dirichlet(
-                        (allopatry,
-                         sympatry,
-                         copy, jump), 1).transpose())
+                def clado_dist(): 
+                    if jump == 0.0:
+                        tmp = [
+                            float(f) for f in numpy.random.dirichlet(
+                                (allopatry,
+                                 sympatry,
+                                 copy), 1).transpose()]
+                        tmp.append(0.0)
+                        return tuple(tmp)
+                    return (
+                        float(f) for f in numpy.random.dirichlet(
+                            (allopatry,
+                             sympatry,
+                             copy, jump), 1).transpose())
 
         self._allopatry, self._sympatry, self._jump, self._copy = clado_dist()
 
