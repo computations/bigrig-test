@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-import shutil
-import subprocess
 import numpy
 import yaml
 from dataclasses import dataclass
@@ -42,7 +40,8 @@ class InverseGaussianDistribution:
     l: float
 
 
-Distribution = StaticDistribution | UniformDistribution | GammaDistribution | LogNormalDistribution | InverseGaussianDistribution
+Distribution = StaticDistribution | UniformDistribution | GammaDistribution \
+    | LogNormalDistribution | InverseGaussianDistribution
 
 
 def make_rate_distribution(type, **kwargs):
@@ -137,20 +136,19 @@ class BigrigConfig(BaseConfig):
     def roll_params(self):
         match self.rate_distribution:
             case StaticDistribution(dis, ext):
-                rate_dist = lambda: (dis, ext)
+                def rate_dist(): return (dis, ext)
             case UniformDistribution(a, b):
-                rate_dist = lambda: (float(f)
-                                     for f in numpy.random.uniform(a, b, 2))
+                def rate_dist(): return (float(f) for f in
+                                         numpy.random.uniform(a, b, 2))
             case GammaDistribution(k, theta):
-                rate_dist = lambda: (float(f) for f in numpy.random.gamma(k,
-                                                                          theta,
-                                                                          2))
+                def rate_dist(): return (float(f) for
+                                         f in numpy.random.gamma(k, theta, 2))
             case LogNormalDistribution(mu, sigma):
-                rate_dist = lambda: (
+                def rate_dist(): return (
                     float(f) for f in numpy.random.lognormal(mu, sigma, 2))
             case InverseGaussianDistribution(mu, l):
-                rate_dist = lambda: (float(f)
-                                     for f in numpy.random.wald(mu, l, 2))
+                def rate_dist(): return (float(f)
+                                         for f in numpy.random.wald(mu, l, 2))
 
         self._dispersion, self._extinction = rate_dist()
 

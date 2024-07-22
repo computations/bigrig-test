@@ -3,7 +3,11 @@ import os
 import numpy
 import utils.vector as vector
 import utils.graph as graph
-import ete3
+
+import warnings
+
+with warnings.catch_warnings(action="ignore"):
+    import ete3
 
 
 class CladeMap:
@@ -99,7 +103,7 @@ class LagrangeNGLog(BaseLog):
 
 class BigrigLog(BaseLog):
 
-    def _setup(self):
+    def _setup(self, text_log):
         self._log = json.load(open(self.logfile))
         self._tree = ete3.Tree(self._log["tree"] + ";", format=1)
         self._regions = int(self._log["regions"])
@@ -142,6 +146,12 @@ class BigrigLog(BaseLog):
         if not hasattr(self, "_ranges"):
             self._ranges = len(self._log["align"]["0"])
         return self._ranges
+
+    @property
+    def time(self):
+        if not hasattr(self, "_time"):
+            self._time = self._log['stats']['time']
+        return self._time
 
 
 def DistributionVectorGenerator(log1: BaseLog, log2: BaseLog):

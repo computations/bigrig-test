@@ -1,7 +1,9 @@
-import ete3
-import os
-import pathlib
 import numpy
+
+import warnings
+
+with warnings.catch_warnings(action="ignore"):
+    import ete3
 
 
 class VectorCollection:

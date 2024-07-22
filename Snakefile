@@ -1,13 +1,16 @@
 from utils.configs import *
 import utils.logs as logs
 import csv
-import ete3
 import pathlib
 import functools
+import json
 
+import warnings
+
+with warnings.catch_warnings(action="ignore"):
+  import ete3
 
 workdir: config["prefix"]
-
 
 config["tree_count"] = len(config["treeSizes"])
 config["range_count"] = len(config["ranges"])
@@ -27,7 +30,20 @@ distance_fields = [
     "tree-iter",
     "bigrig-iter",
     "clade-size",
-    "ranges",
+    "regions",
+]
+
+bigrig_time_fields = [
+    "time",
+    "dispersion",
+    "extinction",
+    "allopatry",
+    "sympatry",
+    "copy",
+    "jump",
+    "root-range",
+    "regions",
+    "taxa"
 ]
 
 
@@ -180,6 +196,32 @@ rule coalece_distances:
                 reader = csv.DictReader(open(input_file))
                 for row in reader:
                     writer.writerow(row)
+
+
+rule time_bigrig:
+    input:
+        logs=expand(
+            "{tree_iter}/{param_iter}_{range_iter}/{repeat}/bigrig/results.json",
+            tree_iter=range(config["tree_count"]),
+            param_iter=range(config["params_count"]),
+            range_iter=range(config["range_count"]),
+            repeat=range(config["repeats"])
+        )
+    output:
+        "bigrig_times.csv"
+    run:
+        with open(output[0], "w") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=bigrig_time_fields,
+                extrasaction='ignore')
+            writer.writeheader()
+            for input_file in input.logs:
+                js = json.load(open(input_file))
+
+                js['time'] = js['stats']['time']
+                js |= js['periods'][0]['cladogenesis']
+                js |= js['periods'][0]['rates']
+
+                writer.writerow(js)
 
 
 rule combine_distances:
