@@ -1,12 +1,29 @@
 prefix: test
 treeSizes: 
-  - 50
-parameters:
-  - type: Static
-    dispersion: 0.1
-    extinction: 0.1
+  - 64
+rate-parameters:
+  - type: InverseGaussian
+    mu: 1.0
+    lambda: 1.0
+clado-parameters:
+  - type: Dirichlet
+    allopatry: 1.0
+    sympatry: 1.0
+    copy: 1.0
+    jump: 0.0
 ranges: 
-  - 5
+  - 3
 programs:
-  - lagrange
+  - name: lagrange
+    path: /home/computations/wrk/hits/lagrange-ng/bin/lagrange-ng
+    profile: False
+    type: lagrange-ng
+  - name: lagrange-fast
+    path: /home/computations/wrk/test/lagrange-ng/bin/lagrange-ng
+    profile: False
+    type: lagrange-ng
+  - name: bigrig
+    path: /home/computations/wrk/hits/bigrig/bin/bigrig
+    profile: False
+    type: bigrig
 repeats: 2
