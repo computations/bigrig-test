@@ -74,6 +74,8 @@ bigrig_time_fields = [
 rule all:
     input:
         "distances.csv",
+        "notebooks/plots.py.ipynb",
+        "results.html"
 
 
 rule make_tree:
@@ -306,3 +308,19 @@ rule combine_distances:
                     reader = csv.DictReader(infile)
                     for row in reader:
                         writer.writerow(row)
+
+rule make_plots:
+  input:
+    distances = "distances.csv",
+  log:
+    notebook="notebooks/plots.py.ipynb",
+  notebook:
+    "notebooks/plots.py.ipynb"
+
+rule make_html:
+  input:
+    notebook = "notebooks/plots.py.ipynb",
+  output:
+    "results.html"
+  shell:
+    "jupyter nbconvert --to html --output-dir . --output {output} {input}"
