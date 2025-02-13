@@ -4,8 +4,16 @@ import csv
 import pathlib
 import functools
 import json
+import gzip
+import pandas
 
 import warnings
+
+
+wildcard_constraints:
+    tree_iter="[0-9]+",
+    model_iter="[0-9]+",
+
 
 with warnings.catch_warnings(action="ignore"):
     import ete3
@@ -13,11 +21,6 @@ with warnings.catch_warnings(action="ignore"):
 
 workdir: config["prefix"]
 
-
-config["tree_count"] = len(config["treeSizes"])
-config["range_count"] = len(config["ranges"])
-config["rate_params_count"] = len(config["rate-parameters"])
-config["clado_params_count"] = len(config["clado-parameters"])
 
 BIGRIG_LOG_BASENAME = "bigrig.log"
 BIGRIG_JSON_BASENAME = "results.json"
@@ -28,7 +31,7 @@ for program in config["programs"]:
     cmd = ""
     if program["profile"]:
         cmd += PERF_COMMAND + " "
-    cmd += program["path"]
+    cmd += program["binary"]
     program["command"] = cmd
 
 LAGRANGE_PROGRAM_NAMES = [
@@ -39,7 +42,7 @@ LAGRANGE_PROGRAM_NAMES = [
 
 PROGRAM_NAMES = LAGRANGE_PROGRAM_NAMES
 
-distance_fields = [
+node_distance_fields = [
     "clade",
     "software",
     "error",
@@ -53,6 +56,24 @@ distance_fields = [
     "tree-iter",
     "bigrig-iter",
     "clade-size",
+    "ranges",
+    "time",
+]
+
+summary_distance_fields = [
+    "software",
+    "median-error",
+    "mean-error",
+    "std-error",
+    "dispersion",
+    "extinction",
+    "allopatry",
+    "sympatry",
+    "copy",
+    "jump",
+    "root-range",
+    "tree-iter",
+    "bigrig-iter",
     "ranges",
     "time",
 ]
@@ -71,51 +92,87 @@ bigrig_time_fields = [
 ]
 
 
+def expand_iter_list(config_base):
+    ret_list = []
+    for i in range(len(config_base)):
+        iter_config = config_base[i]
+        iters = iter_config["iters"] if "iters" in iter_config else 1
+        ret_list += [iter_config] * iters
+    return ret_list
+
+
+config["exp_trees"] = expand_iter_list(config["trees"])
+config["exp_models"] = expand_iter_list(config["models"])
+
+
+def make_program_dict():
+    programs = {}
+    for entry in config["programs"]:
+        if entry["name"] in programs:
+            raise RuntimeError()
+        programs[entry["name"]] = {
+            "binary": entry["binary"],
+            "profile": entry["profile"],
+            "options": entry["options"] if "options" in entry else None,
+        }
+    return programs
+
+programs = make_program_dict()
+
 rule all:
     input:
-        "distances.csv",
         "notebooks/plots.py.ipynb",
-        "results.html"
+        "results.html",
 
 
 rule make_tree:
     output:
         "{tree_iter}/tree.nwk",
     params:
-        size=lambda wildcards: config["treeSizes"][int(wildcards["tree_iter"])],
+        size=lambda wildcards: config["exp_trees"][int(wildcards["tree_iter"])]["taxa"],
     shell:
         "treegen -u --size  {params.size} > {output}"
 
 
 rule setup_bigrig_config:
     input:
-        "{tree_iter}/tree.nwk",
+        tree="{tree_iter}/tree.nwk",
     output:
-        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/config.yaml",
+        config="{tree_iter}/{model_iter}/bigrig/config.yaml",
+        model="{tree_iter}/{model_iter}/bigrig/model.json",
+    benchmark:
+        "benchmarks/{tree_iter}/{model_iter}/setup_bigrig.tsv",
     run:
-        bigrig_config = BigrigConfig()
-        bigrig_config.filename = output[0]
-        bigrig_config.tree = input[0]
-        bigrig_config.prefix = os.path.join(os.path.dirname(output[0]), "results")
-        bigrig_config.range_count = config["ranges"][int(wildcards.range_iter)]
-        bigrig_config.rate_distribution = utils.configs.make_rate_distribution(
-            **config["rate-parameters"][int(wildcards.rate_param_iter)]
+        model = config["exp_models"][int(wildcards.model_iter)]
+        bigrig_params = BigrigParameterSet(model)
+
+        with open(output.model, "w") as jsonfile:
+            json.dump(bigrig_params.dict, jsonfile)
+
+        bigrig_files = BigrigFiles(
+            config=output.config,
+            tree=input.tree,
+            prefix=os.path.join(os.path.dirname(output.config), "results"),
+            binary=programs["bigrig"],
         )
-        bigrig_config.clado_distribution = utils.configs.make_clado_distribution(
-            **config["clado-parameters"][int(wildcards.clado_param_iter)]
+
+        bigrig_options = BigrigOptions()
+
+        bigrig_config = BigrigConfig(
+            params=bigrig_params, files=bigrig_files, options=bigrig_options
         )
-        bigrig_config.roll_params()
+
         bigrig_config.write_config()
 
 
 rule run_bigrig:
     input:
-        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/config.yaml",
+        "{tree_iter}/{model_iter}/bigrig/config.yaml",
     output:
-        align="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
-        result="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.json",
+        align="{tree_iter}/{model_iter}/bigrig/results.phy",
+        result="{tree_iter}/{model_iter}/bigrig/results.json",
     log:
-        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/bigrig.log",
+        "{tree_iter}/{model_iter}/bigrig/bigrig.log",
     shell:
         "~/wrk/hits/bigrig/bin/bigrig --config {input} &> {log}"
 
@@ -123,32 +180,55 @@ rule run_bigrig:
 rule setup_lagrange_config:
     input:
         tree="{tree_iter}/tree.nwk",
-        data="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
+        data="{tree_iter}/{model_iter}/bigrig/results.phy",
     output:
-        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/{program_name}/lagrange.conf",
+        config="{tree_iter}/{model_iter}/{program_name}/lagrange.conf",
+    benchmark:
+        "benchmarks/{tree_iter}/{model_iter}/{program_name}_setup_lagrange.tsv",
     run:
-        lagrange_config = LagrangeConfig()
-        lagrange_config.filename = output[0]
-        lagrange_config.prefix = os.path.join(os.path.dirname(output[0]), "analysis")
-        lagrange_config.tree = input.tree
-        lagrange_config.data = input.data
-        lagrange_config.range_count = config["ranges"][int(wildcards.range_iter)]
+        lagrange_files = utils.configs.LagrangeNGFiles(
+            config=output.config,
+            prefix=os.path.join(os.path.dirname(output.config), "analysis"),
+            tree=input.tree,
+            data=input.data,
+            log=os.path.join(os.path.dirname(output.config), "lagrange.log"),
+            binary = programs[wildcards.program_name]["binary"]
+        )
+        lagrange_params = LagrangeNGParams(
+          ranges = config["exp_models"][int(wildcards.model_iter)]["ranges"],
+        )
+        lagrange_options = LagrangeNGOptions()
+        lagrange_options.workers = int(programs[wildcards.program_name]["options"]["workers"])
+        lagrange_config = LagrangeNGConfig(files = lagrange_files, 
+        params = lagrange_params,
+        options = lagrange_options
+        )
         lagrange_config.write_config()
 
+def get_lagrange_thread_count(wildcards):
+  program_name = wildcards.get("program_name")
+  if "options" not in programs[program_name]:
+    return 1
+  options = programs[program_name]["options"]
+
+  workers = int(options["workers"]) if "workers" in options else 1
+  threads_per_worker = int(options["workers"]) if "threads_per_worker" in options else 1
+  return workers * threads_per_worker
 
 rule run_lagrange:
     input:
-        config="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/{program_name}/lagrange.conf",
+        config="{tree_iter}/{model_iter}/{program_name}/lagrange.conf",
     output:
-        results="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/{program_name}/analysis.results.json",
+        results="{tree_iter}/{model_iter}/{program_name}/analysis.results.json",
     log:
-        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/{program_name}/lagrange.log",
+        "{tree_iter}/{model_iter}/{program_name}/lagrange.log",
     params:
         command=lambda wildcards: [
             program["command"]
             for program in config["programs"]
             if program["name"] == wildcards.get("program_name")
         ],
+    threads: get_lagrange_thread_count
     shell:
         "{params.command} {input.config} &> {log}"
 
@@ -156,9 +236,9 @@ rule run_lagrange:
 rule setup_biogeobears_config:
     input:
         tree="{tree_iter}/tree.nwk",
-        data="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
+        data="{tree_iter}/{model_iter}/bigrig/results.phy",
     output:
-        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/biogeobears/script.r",
+        "{tree_iter}/{model_iter}/biogeobears/script.r",
     run:
         biogebears_config = BioGeoBEARSConfig()
         biogebears_config.filename = output[0]
@@ -171,35 +251,36 @@ rule setup_biogeobears_config:
 rule run_biogeobears:
     input:
         tree="{tree_iter}/tree.nwk",
-        data="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.phy",
-        script="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/biogeobears/script.r",
+        data="{tree_iter}/{model_iter}/bigrig/results.phy",
+        script="{tree_iter}/{model_iter}/biogeobears/script.r",
     output:
-        "{tree_iter}/{rate_param_iter}/biogeobears/results.Rdata",
+        "{tree_iter}/{model_iter}/biogeobears/results.Rdata",
     log:
-        "{tree_iter}/{rate_param_iter}/biogeobears/biogeobears.log",
+        "{tree_iter}/{model_iter}/biogeobears/biogeobears.log",
     shell:
         "Rscript {input.script} &> {log}"
 
 
 rule compute_distances_lagrange:
     input:
-        bigrig_json="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.json",
-        lagrange_json="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/{software_name}/analysis.results.json",
-        lagrange_log="{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/{software_name}/lagrange.log",
+        bigrig_json="{tree_iter}/{model_iter}/bigrig/results.json",
+        lagrange_json="{tree_iter}/{model_iter}/{software_name}/analysis.results.json",
+        lagrange_log="{tree_iter}/{model_iter}/{software_name}/lagrange.log",
     output:
-        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/{software_name}/distances.csv",
+        "{tree_iter}/{model_iter}/{software_name}/distances.csv",
     run:
         clade_map = logs.CladeMap()
-        bigrig = logs.BigrigLog(json_log = input.bigrig_json, clade_map = clade_map)
+        bigrig = logs.BigrigLog(json_log=input.bigrig_json, clade_map=clade_map)
         lagrange = logs.LagrangeNGLog(
-            json_log = input.lagrange_json, clade_map = clade_map, text_log =
-            input.lagrange_log
+            json_log=input.lagrange_json,
+            clade_map=clade_map,
+            text_log=input.lagrange_log,
         )
 
         bigrig_params = bigrig.parameters()
 
         with open(output[0], "w") as outfile:
-            writer = csv.DictWriter(outfile, fieldnames=distance_fields)
+            writer = csv.DictWriter(outfile, fieldnames=node_distance_fields)
             writer.writeheader()
             distances = logs.compute_node_distance_list(bigrig, lagrange)
             for clade, distance in distances.items():
@@ -210,7 +291,7 @@ rule compute_distances_lagrange:
                     "clade": clade_str,
                     "software": wildcards.get("software_name"),
                     "error": distance,
-                    "bigrig-iter": wildcards.rate_param_iter,
+                    "bigrig-iter": wildcards.model_iter,
                     "tree-iter": wildcards.tree_iter,
                     "clade-size": clade_size,
                 }
@@ -222,15 +303,14 @@ rule compute_distances_lagrange:
 rule coalece_distances:
     input:
         expand(
-            "{{tree_iter}}/{{rate_param_iter}}_{{clado_param_iter}}_{{range_iter}}/{repeat}/{program}/distances.csv",
+            "{{tree_iter}}/{{model_iter}}/{program}/distances.csv",
             program=PROGRAM_NAMES,
-            repeat=range(config["repeats"]),
         ),
     output:
-        "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/c_distances.csv",
+        "{tree_iter}/{model_iter}/distances.csv",
     run:
         with open(output[0], "w") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=distance_fields)
+            writer = csv.DictWriter(csvfile, fieldnames=node_distance_fields)
             writer.writeheader()
             for input_file in input:
                 reader = csv.DictReader(open(input_file))
@@ -241,34 +321,19 @@ rule coalece_distances:
 rule time_bigrig:
     input:
         result_logs=expand(
-            (
-                "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/results.json",
-            ),
-            tree_iter=range(config["tree_count"]),
-            rate_param_iter=range(config["rate_params_count"]),
-            clado_param_iter=range(config["clado_params_count"]),
-            range_iter=range(config["range_count"]),
-            repeat=range(config["repeats"]),
+            ("{tree_iter}/{model_iter}/bigrig/results.json",),
+            tree_iter=range(len(config["exp_trees"])),
+            model_iter=range(len(config["exp_models"])),
         ),
         bigrig_logs=expand(
-            (
-                "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/bigrig.log",
-            ),
-            tree_iter=range(config["tree_count"]),
-            rate_param_iter=range(config["rate_params_count"]),
-            clado_param_iter=range(config["clado_params_count"]),
-            range_iter=range(config["range_count"]),
-            repeat=range(config["repeats"]),
+            ("{tree_iter}/{model_iter}/bigrig/bigrig.log",),
+            tree_iter=range(len(config["exp_trees"])),
+            model_iter=range(len(config["exp_models"])),
         ),
         perf_logs=expand(
-            (
-                "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/{repeat}/bigrig/perf.json",
-            ),
-            tree_iter=range(config["tree_count"]),
-            rate_param_iter=range(config["rate_params_count"]),
-            clado_param_iter=range(config["clado_params_count"]),
-            range_iter=range(config["range_count"]),
-            repeat=range(config["repeats"]),
+            ("{tree_iter}/{model_iter}/bigrig/perf.json",),
+            tree_iter=range(len(config["exp_trees"])),
+            model_iter=range(len(config["exp_models"])),
         ),
     output:
         "bigrig_times.csv",
@@ -288,20 +353,18 @@ rule time_bigrig:
                 writer.writerow(bigrig_log.time_csv_row())
 
 
-rule combine_distances:
+rule combine_node_distances:
     input:
         distances=expand(
-            "{tree_iter}/{rate_param_iter}_{clado_param_iter}_{range_iter}/c_distances.csv",
-            tree_iter=range(config["tree_count"]),
-            rate_param_iter=range(config["rate_params_count"]),
-            clado_param_iter=range(config["clado_params_count"]),
-            range_iter=range(config["range_count"]),
+            "{tree_iter}/{model_iter}/distances.csv",
+            tree_iter=range(len(config["exp_trees"])),
+            model_iter=range(len(config["exp_models"])),
         ),
     output:
-        "distances.csv",
+        "node_distances.csv.gz",
     run:
-        with open(output[0], "w") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=distance_fields)
+        with gzip.open(output[0], "wt") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=node_distance_fields)
             writer.writeheader()
             for distances in input.distances:
                 with open(distances) as infile:
@@ -309,18 +372,20 @@ rule combine_distances:
                     for row in reader:
                         writer.writerow(row)
 
+
 rule make_plots:
-  input:
-    distances = "distances.csv",
-  log:
-    notebook="notebooks/plots.py.ipynb",
-  notebook:
-    "notebooks/plots.py.ipynb"
+    input:
+        node_distances="node_distances.csv.gz",
+    log:
+        notebook="notebooks/plots.py.ipynb",
+    notebook:
+        "notebooks/plots.py.ipynb"
+
 
 rule make_html:
-  input:
-    notebook = "notebooks/plots.py.ipynb",
-  output:
-    "results.html"
-  shell:
-    "jupyter nbconvert --to html --output-dir . --output {output} {input}"
+    input:
+        notebook="notebooks/plots.py.ipynb",
+    output:
+        "results.html",
+    shell:
+        "jupyter nbconvert --to html --output-dir . --output {output} {input}"

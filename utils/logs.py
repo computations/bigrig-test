@@ -15,7 +15,6 @@ NANOSECOND_RATIO = 1e-9
 
 
 class CladeMap:
-
     def __init__(self):
         self._clades = {}
         self._next_index = 0
@@ -40,14 +39,13 @@ class CladeMap:
 
 
 class BaseLog:
-
     def __init__(self, **kwargs):
-        self.logfile = kwargs.get('json_log')
-        if kwargs.get('text_log') is not None:
-            self.text_log = kwargs.get('text_log')
-        self._clade_map = kwargs.get('clade_map')
-        if kwargs.get('perf_log') is not None:
-            self._perf_log = kwargs.get('perf_log')
+        self.logfile = kwargs.get("json_log")
+        if kwargs.get("text_log") is not None:
+            self.text_log = kwargs.get("text_log")
+        self._clade_map = kwargs.get("clade_map")
+        if kwargs.get("perf_log") is not None:
+            self._perf_log = kwargs.get("perf_log")
         self._setup()
 
     @property
@@ -97,8 +95,8 @@ class BaseLog:
         with open(self._perf_log) as perf_log:
             for line in perf_log:
                 j = json.loads(line)
-                if j['event'] == 'duration_time':
-                    return float(j['counter-value']) * NANOSECOND_RATIO
+                if j["event"] == "duration_time":
+                    return float(j["counter-value"]) * NANOSECOND_RATIO
 
     @property
     def time(self):
@@ -108,23 +106,24 @@ class BaseLog:
 
 
 class LagrangeNGLog(BaseLog):
-
     def _setup(self):
         self._log = json.load(open(self.logfile))
         self._tree = ete3.Tree(
-            re.sub(r'\[[^]]*\]', '',
-                   self._log["attributes"]["nodes-tree"]), format=1)
+            re.sub(r"\[[^]]*\]", "", self._log["attributes"]["nodes-tree"]),
+            format=1,
+        )
         self._regions = self._log["attributes"]["regions"]
         self._add_vectors()
         self._time = self._get_execution_time(self.text_log)
 
     def _add_vectors(self):
         for node in self._tree.traverse("postorder"):
-            if node.is_leaf() or node.name == '':
+            if node.is_leaf() or node.name == "":
                 continue
             node_results = self._get_node_results(node.name)
             self.vectors.add_distribution_vector(
-                node, self._make_vector(node_results["states"]))
+                node, self._make_vector(node_results["states"])
+            )
 
     def _make_vector(self, state_list):
         ret = numpy.zeros(2**self._regions)
@@ -140,11 +139,10 @@ class LagrangeNGLog(BaseLog):
     @staticmethod
     def _get_execution_time(text_log_filename):
         timeline = open(text_log_filename).readlines()[-1]
-        return timeline.split()[-1].strip(' s')
+        return timeline.split()[-1].strip(" s")
 
 
 class BigrigLog(BaseLog):
-
     def _setup(self):
         self._log = json.load(open(self.logfile))
         self._tree = ete3.Tree(self._log["tree"] + ";", format=1)
@@ -155,16 +153,16 @@ class BigrigLog(BaseLog):
 
     def _make_distributions(self):
         self._distributions = {
-            k: int(v, 2)
-            for k, v in self._log["align"].items()
+            k: int(v, 2) for k, v in self._log["align"].items()
         }
 
     def _add_vectors(self):
         for node in self._tree.traverse("postorder"):
-            if node.is_leaf() or node.name == '':
+            if node.is_leaf() or node.name == "":
                 continue
             self.vectors.add_distribution_vector(
-                node, self._make_vector(self._distributions[node.name]))
+                node, self._make_vector(self._distributions[node.name])
+            )
 
     def _make_vector(self, distribution):
         ret = numpy.zeros(2**self._regions)
@@ -172,21 +170,21 @@ class BigrigLog(BaseLog):
         return ret
 
     def parameters(self):
-        p = self._log['periods'][0]
+        p = self._log["periods"][0]
         return {
-            'allopatry': p['cladogenesis']['allopatry'],
-            'sympatry': p['cladogenesis']['sympatry'],
-            'copy': p['cladogenesis']['copy'],
-            'jump': p['cladogenesis']['jump'],
-            'dispersion': p['rates']['dispersion'],
-            'extinction': p['rates']['extinction'],
-            'root-range': self._log["align"]["0"],
-            'ranges': self.ranges,
+            "allopatry": p["cladogenesis"]["allopatry"],
+            "sympatry": p["cladogenesis"]["sympatry"],
+            "copy": p["cladogenesis"]["copy"],
+            "jump": p["cladogenesis"]["jump"],
+            "dispersion": p["rates"]["dispersion"],
+            "extinction": p["rates"]["extinction"],
+            "root-range": self._log["align"]["0"],
+            "ranges": self.ranges,
         }
 
     def time_csv_row(self):
         tmp = self.parameters()
-        tmp |= {'time': self.time, 'taxa': self._log['taxa']}
+        tmp |= {"time": self.time, "taxa": self._log["taxa"]}
         return tmp
 
     @property
@@ -202,7 +200,8 @@ def DistributionVectorGenerator(log1: BaseLog, log2: BaseLog):
     for c1, c2 in zip(v1.clades, v2.clades):
         if not c1 == c2:
             raise Exception(
-                "There was an issue with generating a zipped list of vectors")
+                "There was an issue with generating a zipped list of vectors"
+            )
         yield (c1, v1[c1], v2[c2])
 
 

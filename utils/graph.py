@@ -1,21 +1,18 @@
 import numpy
 import scipy.optimize
-from numpy.random import default_rng
 
 
 def popcount(x):
-    return bin(x).count('1')
+    return bin(x).count("1")
 
 
 class Edge:
-
     def __init__(self, f, t):
         self._from = f
         self._to = t
 
 
 class Problem:
-
     def __init__(self, dist_diff):
         self._edges = []
         self._states = len(dist_diff)

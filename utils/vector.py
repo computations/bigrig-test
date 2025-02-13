@@ -7,13 +7,13 @@ with warnings.catch_warnings(action="ignore"):
 
 
 class VectorCollection:
-
     def __init__(self, clade_map):
         self._vectors = {}
         self._clade_map = clade_map
 
-    def add_distribution_vector(self, node: [ete3.TreeNode],
-                                vector: [numpy.ndarray]):
+    def add_distribution_vector(
+        self, node: [ete3.TreeNode], vector: [numpy.ndarray]
+    ):
         self._vectors[self.convert_node_to_key(node)] = vector
 
     def convert_node_to_key(self, node: [ete3.TreeNode]):

@@ -3,6 +3,7 @@
 import os
 import numpy
 import yaml
+import pathlib
 from dataclasses import dataclass
 
 import utils.util
@@ -11,319 +12,317 @@ SRC_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
 @dataclass
-class StaticRateDistribution:
-    dispersion: float
-    extinction: float
+class DistributionBase:
+    def __call__(self):
+        if not hasattr(self, "_val"):
+            self._val = self._get()
+        return self._val
+
+    def lock(self, p):
+        self._val = p
 
 
 @dataclass
-class UniformRateDistribution:
+class StaticDistribution(DistributionBase):
+    param: float
+
+    def _get(self):
+        return self.param
+
+
+@dataclass
+class UniformDistribution(DistributionBase):
     start: float
     end: float
 
+    def _get(self):
+        return numpy.random.uniform(self.start, self.end)
+
 
 @dataclass
-class GammaRateDistribution:
+class GammaRateDistribution(DistributionBase):
     shape: float
     scale: float
 
+    def _get(self):
+        return numpy.random.gamma(self.shape, self.scale)
+
 
 @dataclass
-class LogNormalRateDistribution:
+class LogNormalRateDistribution(DistributionBase):
     mu: float
     sigma: float
 
+    def _get(self):
+        return numpy.random.lognormal(self.mu, self.sigma)
+
 
 @dataclass
-class InverseGaussianRateDistribution:
+class InverseGaussianRateDistribution(DistributionBase):
     mu: float
-    l: float
+    lam: float
+
+    def _get(self):
+        return numpy.random.wald(self.mu, self.lam)
 
 
-RateDistribution = StaticRateDistribution | UniformRateDistribution \
-    | GammaRateDistribution | LogNormalRateDistribution \
+@dataclass
+class BetaDistribution(DistributionBase):
+    alpha: float
+    beta: float
+
+    def _get(self):
+        return numpy.random.beta(self.alpha, self.beta)
+
+
+@dataclass
+class ClampedBetaDistribution(BetaDistribution):
+    max: float
+
+    def _get(self):
+        while True:
+            if (val := numpy.random.beta(self.alpha, self.beta)) <= self.max:
+                return val
+
+
+@dataclass
+class RootRangeDistribution(DistributionBase):
+    regions: int
+
+    def _get(self):
+        while "1" not in (
+            tmp := "".join(
+                [str(i) for i in numpy.random.randint([2] * self.regions)]
+            )
+        ):
+            pass
+        return tmp
+
+    def to_str(self):
+        return self._val
+
+
+Distribution = (
+    StaticDistribution
+    | UniformDistribution
+    | GammaRateDistribution
+    | LogNormalRateDistribution
     | InverseGaussianRateDistribution
+    | BetaDistribution
+    | ClampedBetaDistribution
+)
 
 
-def make_rate_distribution(type, **kwargs):
+def make_distribution(type, **kwargs) -> Distribution:
     match type:
         case "Static":
-            return StaticRateDistribution(kwargs['dispersion'],
-                                          kwargs['extinction'])
+            return StaticDistribution(kwargs["value"])
         case "Uniform":
-            return UniformRateDistribution(kwargs['a'], kwargs['b'])
+            return UniformDistribution(kwargs["start"], kwargs["end"])
         case "Gamma":
-            return GammaRateDistribution(kwargs['k'], kwargs['theta'])
+            return GammaRateDistribution(kwargs["k"], kwargs["theta"])
         case "LogNormal":
-            return LogNormalRateDistribution(kwargs['mu'], kwargs['sigma'])
+            return LogNormalRateDistribution(kwargs["mu"], kwargs["sigma"])
         case "InverseGaussian":
             return InverseGaussianRateDistribution(
-                kwargs['mu'], kwargs['lambda'])
+                kwargs["mu"], kwargs["lambda"]
+            )
+        case "Beta":
+            return BetaDistribution(kwargs["alpha"], kwargs["beta"])
+        case "ClampedBeta":
+            return ClampedBetaDistribution(
+                kwargs["alpha"], kwargs["beta"], kwargs["max"]
+            )
 
 
 @dataclass
-class StaticCladoDistribution:
-    allopatry: float
-    sympatry: float
-    copy: float
-    jump: float
+class RateParamterSet:
+    dispersion: Distribution
+    extinction: Distribution
+
+    @property
+    def dict(self):
+        return {
+            "dispersion": self.dispersion(),
+            "extinction": self.extinction(),
+        }
+
+    def load(self, p):
+        self.dispersion.lock(p["dispersion"])
+        self.extinction.lock(p["extinction"])
+
+    def __init__(self, model_config):
+        rates_config = model_config["rate-parameters"]
+        self.dispersion = make_distribution(**rates_config["dispersion"])
+        self.extinction = make_distribution(**rates_config["extinction"])
+
+
+@dataclass()
+class CladoParameterSet:
+    allopatry: Distribution
+    sympatry: Distribution
+    copy: Distribution
+    jump: Distribution
+
+    @property
+    def dict(self):
+        return {
+            "allopatry": self.allopatry(),
+            "sympatry": self.sympatry(),
+            "copy": self.copy(),
+            "jump": self.jump(),
+        }
+
+    def load(self, p):
+        self.allopatry.lock(p["allopatry"])
+        self.sympatry.lock(p["sympatry"])
+        self.copy.lock(p["copy"])
+        self.jump.lock(p["jump"])
+
+    def __init__(self, model_config):
+        clado_params = model_config["clado-parameters"]
+        dist_type = clado_params['type']
+        if dist_type == "Dirichlet":
+            self.allopatry = GammaRateDistribution(
+                shape=clado_params["allopatry"], scale=1.0
+            )
+            self.sympatry = GammaRateDistribution(
+                shape=clado_params["sympatry"], scale=1.0
+            )
+            self.copy = GammaRateDistribution(
+                shape=clado_params["copy"], scale=1.0
+            )
+            self.jump = GammaRateDistribution(
+                shape=clado_params["jump"], scale=1.0
+            )
+        if dist_type == "Static":
+            self.allopatry = StaticDistribution(clado_params["allopatry"])
+            self.sympatry = StaticDistribution(clado_params["sympatry"])
+            self.copy = StaticDistribution(clado_params["copy"])
+            self.jump = StaticDistribution(clado_params["jump"])
+
+
+@dataclass(init=False)
+class BigrigParameterSet:
+    rates: RateParamterSet
+    clado: CladoParameterSet
+    root_range: RootRangeDistribution
+
+    @property
+    def dict(self):
+        return {
+            "rates": self.rates.dict,
+            "clado": self.clado.dict,
+            "root_range": self.root_range(),
+        }
+
+    def load(self, p):
+        print(p)
+        self.rates.load(p["rates"])
+        self.clado.load(p["clado"])
+        self.root_range.lock(p["root_range"])
+
+    def __init__(self, model_config):
+        self.rates = RateParamterSet(model_config)
+        self.clado = CladoParameterSet(model_config)
+        self.root_range = RootRangeDistribution(regions=model_config["ranges"])
 
 
 @dataclass
-class DirichletCladoDistribution:
-    allopatry: float
-    sympatry: float
-    copy: float
-    jump: float
+class BigrigOptions:
+    output_format: str = "json"
 
 
-CladoDistribution = StaticCladoDistribution | DirichletCladoDistribution
+@dataclass
+class BigrigFiles:
+    config: pathlib.Path
+    tree: pathlib.Path
+    prefix: pathlib.Path
+    binary: pathlib.Path
 
 
-def make_clado_distribution(type, **kwargs):
-    match type:
-        case "Static":
-            return StaticCladoDistribution(
-                kwargs['allopatry'],
-                kwargs['sympatry'],
-                kwargs['copy'],
-                kwargs['jump'])
-        case "Dirichlet":
-            return DirichletCladoDistribution(
-                kwargs['allopatry'],
-                kwargs['sympatry'],
-                kwargs['copy'],
-                kwargs['jump'])
-
-
-class BaseConfig:
-
-    @property
-    def tree(self):
-        """The treefile property."""
-        return self._tree
-
-    @tree.setter
-    def tree(self, value):
-        self._tree = os.path.abspath(value)
-
-    @property
-    def filename(self):
-        """The filename property."""
-        return self._filename
-
-    @filename.setter
-    def filename(self, value):
-        self._filename = os.path.abspath(value)
-
-    @property
-    def data(self):
-        """The data property."""
-        return self._data
-
-    @data.setter
-    def data(self, value):
-        self._data = os.path.abspath(value)
-
-    @property
-    def region_count(self):
-        """The region_count property."""
-        return self._region_count
-
-    @region_count.setter
-    def region_count(self, value):
-        self._region_count = value
-
-    @property
-    def prefix(self):
-        """The prefix property."""
-        return self._prefix
-
-    @prefix.setter
-    def prefix(self, value):
-        self._prefix = os.path.abspath(value)
-
-    @property
-    def range_count(self):
-        """The range_count property."""
-        return self._range_count
-
-    @range_count.setter
-    def range_count(self, value):
-        self._range_count = int(value)
-
-
-class BigrigConfig(BaseConfig):
-
-    def __init__(self):
-        pass
+@dataclass
+class BigrigConfig:
+    params: BigrigParameterSet
+    files: BigrigFiles
+    options: BigrigOptions
 
     def write_config(self):
-        with open(self.filename, 'w') as outfile:
+        with open(self.files.config, "w") as outfile:
             outfile.write(
-                yaml.dump({
-                    "rates": self.rates,
-                    "cladogenesis": self.cladogenesis,
-                    "root-range": self.root_range,
-                    "tree": self.tree,
-                    "output-format": self.output_format,
-                    "prefix": self.prefix,
-                }))
+                yaml.dump(
+                    {
+                        "rates": self.params.rates.dict,
+                        "cladogenesis": self.params.clado.dict,
+                        "root-range": self.params.root_range.to_str(),
+                        "tree": self.files.tree,
+                        "output-format": self.options.output_format,
+                        "prefix": self.files.prefix,
+                    }
+                )
+            )
 
-    def roll_params(self):
-        self.roll_rate_params()
-        self.roll_clado_params()
-        self.roll_root_range()
-
-    def roll_rate_params(self):
-        match self.rate_distribution:
-            case StaticRateDistribution(dis, ext):
-                def rate_dist(): return (dis, ext)
-            case UniformRateDistribution(a, b):
-                def rate_dist(): return (float(f) for f in
-                                         numpy.random.uniform(a, b, 2))
-            case GammaRateDistribution(k, theta):
-                def rate_dist(): return (float(f) for
-                                         f in numpy.random.gamma(k, theta, 2))
-            case LogNormalRateDistribution(mu, sigma):
-                def rate_dist(): return (
-                    float(f) for f in numpy.random.lognormal(mu, sigma, 2))
-            case InverseGaussianRateDistribution(mu, l):
-                def rate_dist(): return (float(f)
-                                         for f in numpy.random.wald(mu, l, 2))
-
-        self._dispersion, self._extinction = rate_dist()
-
-    def roll_clado_params(self):
-        match self.clado_distribution:
-            case StaticCladoDistribution(allopatry, sympatry, copy, jump):
-                def clado_dist(): return (allopatry, sympatry, copy, jump)
-            case DirichletCladoDistribution(allopatry, sympatry, copy, jump):
-                def clado_dist():
-                    if jump == 0.0:
-                        tmp = [
-                            float(f) for f in numpy.random.dirichlet(
-                                (allopatry,
-                                 sympatry,
-                                 copy), 1).transpose()]
-                        tmp.append(0.0)
-                        return tuple(tmp)
-                    return (
-                        float(f) for f in numpy.random.dirichlet(
-                            (allopatry,
-                             sympatry,
-                             copy, jump), 1).transpose())
-
-        self._allopatry, self._sympatry, self._copy, self._jump = clado_dist()
-
-    def roll_root_range(self):
-        self._root_range = ""
-        while "1" not in self._root_range:
-            self._root_range = "".join(
-                numpy.random.choice(["0", "1"], self.range_count))
-
-    @property
-    def rates(self):
-        if hasattr(self, "_rates"):
-            return self._rates
-        self._rates = {
-            "dispersion": self.dispersion,
-            "extinction": self.extinction
-        }
-        return self._rates
-
-    @property
-    def cladogenesis(self):
-        if hasattr(self, "_cladogenesis"):
-            return self._cladogenesis
-        self._cladogenesis = {
-            "allopatry": self.allopatry,
-            "sympatry": self.sympatry,
-            "jump": self.jump,
-            "copy": self.copy,
-        }
-        return self._cladogenesis
-
-    @property
-    def rate_distribution(self):
-        """The rate_distribution property."""
-        return self._rate_distribution
-
-    @rate_distribution.setter
-    def rate_distribution(self, value: RateDistribution):
-        self._rate_distribution = value
-
-    @property
-    def clado_distribution(self):
-        """The rate_distribution property."""
-        return self._clado_distribution
-
-    @clado_distribution.setter
-    def clado_distribution(self, value: CladoDistribution):
-        self._clado_distribution = value
-
-    @property
-    def dispersion(self):
-        return self._dispersion
-
-    @property
-    def extinction(self):
-        return self._extinction
-
-    @property
-    def allopatry(self):
-        return self._allopatry
-
-    @property
-    def sympatry(self):
-        return self._sympatry
-
-    @property
-    def jump(self):
-        return self._jump
-
-    @property
-    def copy(self):
-        return self._copy
-
-    @property
-    def root_range(self):
-        """The root_range property."""
-        return self._root_range
-
-    @property
-    def output_format(self):
-        return "json"
+    def command(self):
+        return self.binary + " " + f"--config {self.files.config}"
 
 
-class LagrangeConfig(BaseConfig):
+@dataclass
+class LagrangeNGFiles:
+    config: pathlib.Path
+    tree: pathlib.Path
+    data: pathlib.Path
+    log: pathlib.Path
+    prefix: pathlib.Path
+    binary: pathlib.Path
 
-    def __init__(self):
-        pass
+
+@dataclass
+class LagrangeNGParams:
+    ranges: int
+
+
+@dataclass
+class LagrangeNGOptions:
+    expm_mode: str = "adaptive"
+    workers: int = 1
+    threads_per_worker: int = 1
+    output_type: str = "json"
+    opt_method: str = "bfgs"
+
+
+@dataclass
+class LagrangeNGConfig:
+    files: LagrangeNGFiles
+    params: LagrangeNGParams
+    options: LagrangeNGOptions
 
     def _config_tree_line(self):
-        return "treefile = {}".format(self.tree) + "\n"
+        return f"treefile = {self.files.tree}\n"
 
     def _config_data_line(self):
-        return "datafile = {}".format(self.data) + "\n"
+        return f"datafile = {self.files.data}\n"
 
     def _config_areanames_line(self):
         area_list = (
-            n for _, n in zip(range(self.range_count),
-                              utils.util.base26_generator(self.range_count)))
-        return "areanames = {}".format(' '.join(area_list)) + "\n"
+            n
+            for _, n in zip(
+                range(self.params.ranges),
+                utils.util.base26_generator(self.params.ranges),
+            )
+        )
+        return "areanames = {}".format(" ".join(area_list)) + "\n"
 
     def _config_states_line(self):
-        return "states" + "\n"
+        return "states\n"
 
     def _config_workers_line(self):
-        return "workers = 1" + "\n"
+        return f"workers = {self.options.workers}\n"
 
     def _config_prefix_line(self):
-        return "prefix = {}".format(self.prefix) + "\n"
+        return f"prefix = {self.files.prefix}\n"
 
     def write_config(self):
-        with open(self.filename, 'w') as outfile:
+        with open(self.files.config, "w") as outfile:
             outfile.write(self._config_tree_line())
             outfile.write(self._config_data_line())
             outfile.write(self._config_areanames_line())
@@ -331,9 +330,11 @@ class LagrangeConfig(BaseConfig):
             outfile.write(self._config_workers_line())
             outfile.write(self._config_prefix_line())
 
+    def command(self):
+        return f"{self.files.binary} {self.files.config}"
 
-class BioGeoBEARSConfig(BaseConfig):
 
+class BioGeoBEARSConfig:
     def __init__(self):
         pass
 
@@ -342,12 +343,13 @@ class BioGeoBEARSConfig(BaseConfig):
         return os.path.join(SRC_PATH, "biogeobears.r")
 
     def _copy_files(self):
-        with open(self.filename, 'w') as outfile:
+        with open(self.filename, "w") as outfile:
             script = open(self.base_script).read()
             outfile.write(
-                script.format(tree=self.tree,
-                              data=self.data,
-                              results=self.results))
+                script.format(
+                    tree=self.tree, data=self.data, results=self.results
+                )
+            )
 
     @property
     def results(self):
