@@ -122,7 +122,8 @@ programs = make_program_dict()
 rule all:
     input:
         "notebooks/plots.py.ipynb",
-        "results.html",
+        "results_error.html",
+        "results_bigrig.html",
 
 
 rule make_tree:
@@ -330,11 +331,6 @@ rule time_bigrig:
             tree_iter=range(len(config["exp_trees"])),
             model_iter=range(len(config["exp_models"])),
         ),
-        perf_logs=expand(
-            ("{tree_iter}/{model_iter}/bigrig/perf.json",),
-            tree_iter=range(len(config["exp_trees"])),
-            model_iter=range(len(config["exp_models"])),
-        ),
     output:
         "bigrig_times.csv",
     run:
@@ -343,11 +339,11 @@ rule time_bigrig:
                 csvfile, fieldnames=bigrig_time_fields, extrasaction="ignore"
             )
             writer.writeheader()
-            for results_file, log_file, perf_file in zip(
-                input.result_logs, input.bigrig_logs, input.perf_logs
+            for results_file, log_file in zip(
+                input.result_logs, input.bigrig_logs
             ):
                 bigrig_log = logs.BigrigLog(
-                    json_log=results_file, text_log=log_file, perf_log=perf_file
+                    json_log=results_file, text_log=log_file
                 )
 
                 writer.writerow(bigrig_log.time_csv_row())
@@ -372,8 +368,7 @@ rule combine_node_distances:
                     for row in reader:
                         writer.writerow(row)
 
-
-rule make_plots:
+rule make_error_plots:
     input:
         node_distances="node_distances.csv.gz",
     log:
@@ -381,11 +376,27 @@ rule make_plots:
     notebook:
         "notebooks/plots.py.ipynb"
 
+rule make_bigrig_plots:
+    input:
+        node_distances="bigrig_times.csv",
+    log:
+        notebook="notebooks/bigrig.r.ipynb",
+    notebook:
+        "notebooks/bigrig.r.ipynb"
 
-rule make_html:
+rule make_error_plot_html:
     input:
         notebook="notebooks/plots.py.ipynb",
     output:
-        "results.html",
+        "results_error.html",
     shell:
         "jupyter nbconvert --to html --output-dir . --output {output} {input}"
+
+rule make_bigrig_plot_html:
+    input:
+        notebook="notebooks/bigrig.r.ipynb",
+    output:
+        "results_bigrig.html",
+    shell:
+        "jupyter nbconvert --to html --output-dir . --output {output} {input}"
+

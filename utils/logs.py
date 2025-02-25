@@ -182,6 +182,11 @@ class BigrigLog(BaseLog):
             "ranges": self.ranges,
         }
 
+    @property
+    def time(self):
+        """The time property."""
+        return self._log["stats"]["time"]
+
     def time_csv_row(self):
         tmp = self.parameters()
         tmp |= {"time": self.time, "taxa": self._log["taxa"]}

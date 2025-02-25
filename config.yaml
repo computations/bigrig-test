@@ -1,7 +1,35 @@
 prefix: test
 trees: 
+  - taxa: 65536
+    iters: 10
+  - taxa: 32768
+    iters: 10
+  - taxa: 16384
+    iters: 10
+  - taxa: 8192
+    iters: 10
+  - taxa: 4096
+    iters: 10
+  - taxa: 2048
+    iters: 10
+  - taxa: 1024
+    iters: 10
+  - taxa: 512
+    iters: 10
+  - taxa: 256
+    iters: 10
   - taxa: 128
-    iters: 30
+    iters: 10
+  - taxa: 128
+    iters: 10
+  - taxa: 64
+    iters: 10
+  - taxa: 32
+    iters: 10
+  - taxa: 16
+    iters: 10
+  - taxa: 8
+    iters: 10
 models:
   - rate-parameters:
       dispersion:
