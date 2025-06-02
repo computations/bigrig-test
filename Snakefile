@@ -123,7 +123,6 @@ rule all:
     input:
         "notebooks/plots.py.ipynb",
         "results_error.html",
-        "results_bigrig.html",
 
 
 rule make_tree:
@@ -172,11 +171,21 @@ rule run_bigrig:
     output:
         align="{tree_iter}/{model_iter}/bigrig/results.phy",
         result="{tree_iter}/{model_iter}/bigrig/results.json",
+    shadow: "full"
     log:
         "{tree_iter}/{model_iter}/bigrig/bigrig.log",
     shell:
         "~/wrk/hits/bigrig/bin/bigrig --config {input} &> {log}"
 
+
+for result_file in ["results.annotated.nwk", "results.json"]:
+  rule:
+    input:
+      f"{{tree_iter}}/{{model_iter}}/bigrig/{result_file}",
+    output:
+      f"{{tree_iter}}/{{model_iter}}/bigrig/{result_file}.gz",
+    shell:
+      "gzip {input}"
 
 rule setup_lagrange_config:
     input:
@@ -230,8 +239,25 @@ rule run_lagrange:
             if program["name"] == wildcards.get("program_name")
         ],
     threads: get_lagrange_thread_count
+    shadow: "full"
     shell:
         "{params.command} {input.config} &> {log}"
+
+
+for result_file in ["analysis.results.json"]:
+  rule:
+    input:
+      f"{{tree_iter}}/{{model_iter}}/{{program_name}}/{result_file}",
+    output:
+      f"{{tree_iter}}/{{model_iter}}/{{program_name}}/{result_file}.gz",
+    params:
+        command=lambda wildcards: [
+            program["command"]
+            for program in config["programs"]
+            if program["name"] == wildcards.get("program_name")
+        ],
+    shell:
+      "gzip {input}"
 
 
 rule setup_biogeobears_config:
@@ -264,8 +290,8 @@ rule run_biogeobears:
 
 rule compute_distances_lagrange:
     input:
-        bigrig_json="{tree_iter}/{model_iter}/bigrig/results.json",
-        lagrange_json="{tree_iter}/{model_iter}/{software_name}/analysis.results.json",
+        bigrig_json="{tree_iter}/{model_iter}/bigrig/results.json.gz",
+        lagrange_json="{tree_iter}/{model_iter}/{software_name}/analysis.results.json.gz",
         lagrange_log="{tree_iter}/{model_iter}/{software_name}/lagrange.log",
     output:
         "{tree_iter}/{model_iter}/{software_name}/distances.csv",
@@ -322,7 +348,7 @@ rule coalece_distances:
 rule time_bigrig:
     input:
         result_logs=expand(
-            ("{tree_iter}/{model_iter}/bigrig/results.json",),
+            ("{tree_iter}/{model_iter}/bigrig/results.json.gz",),
             tree_iter=range(len(config["exp_trees"])),
             model_iter=range(len(config["exp_models"])),
         ),
@@ -381,6 +407,9 @@ rule make_bigrig_plots:
         node_distances="bigrig_times.csv",
     log:
         notebook="notebooks/bigrig.r.ipynb",
+    output:
+      "figs/bigrig.times.boxplot.svg",
+      "figs/bigrig.times.linreg.svg",
     notebook:
         "notebooks/bigrig.r.ipynb"
 

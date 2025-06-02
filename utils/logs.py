@@ -4,6 +4,7 @@ import numpy
 import utils.vector as vector
 import utils.graph as graph
 import re
+import gzip
 
 import warnings
 
@@ -107,7 +108,7 @@ class BaseLog:
 
 class LagrangeNGLog(BaseLog):
     def _setup(self):
-        self._log = json.load(open(self.logfile))
+        self._log = json.load(gzip.open(self.logfile, 'rb'))
         self._tree = ete3.Tree(
             re.sub(r"\[[^]]*\]", "", self._log["attributes"]["nodes-tree"]),
             format=1,
@@ -144,7 +145,7 @@ class LagrangeNGLog(BaseLog):
 
 class BigrigLog(BaseLog):
     def _setup(self):
-        self._log = json.load(open(self.logfile))
+        self._log = json.load(gzip.open(self.logfile, 'rb'))
         self._tree = ete3.Tree(self._log["tree"] + ";", format=1)
         self._regions = int(self._log["regions"])
         if self._clade_map is not None:
