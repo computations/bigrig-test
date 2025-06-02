@@ -1,3 +1,4 @@
 .snakemake
 test
 **/__pycache__/
+exp
