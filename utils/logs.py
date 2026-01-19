@@ -108,7 +108,7 @@ class BaseLog:
 
 class LagrangeNGLog(BaseLog):
     def _setup(self):
-        self._log = json.load(gzip.open(self.logfile, 'rb'))
+        self._log = json.load(gzip.open(self.logfile, "rb"))
         self._tree = ete3.Tree(
             re.sub(r"\[[^]]*\]", "", self._log["attributes"]["nodes-tree"]),
             format=1,
@@ -145,7 +145,7 @@ class LagrangeNGLog(BaseLog):
 
 class BigrigLog(BaseLog):
     def _setup(self):
-        self._log = json.load(gzip.open(self.logfile, 'rb'))
+        self._log = json.load(gzip.open(self.logfile, "rb"))
         self._tree = ete3.Tree(self._log["tree"] + ";", format=1)
         self._regions = int(self._log["regions"])
         if self._clade_map is not None:
@@ -188,9 +188,24 @@ class BigrigLog(BaseLog):
         """The time property."""
         return self._log["stats"]["time"]
 
+    @property
+    def config_time(self):
+        """The time property."""
+        return self._log["stats"]["config-time"]
+
+    @property
+    def execution_time(self):
+        """The time property."""
+        return self._log["stats"]["execution-time"]
+
     def time_csv_row(self):
         tmp = self.parameters()
-        tmp |= {"time": self.time, "taxa": self._log["taxa"]}
+        tmp |= {
+            "time": self.time,
+            "execution-time": self.execution_time,
+            "config-time": self.config_time,
+            "taxa": self._log["taxa"],
+        }
         return tmp
 
     @property

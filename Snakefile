@@ -80,6 +80,8 @@ summary_distance_fields = [
 
 bigrig_time_fields = [
     "time",
+    "config-time",
+    "execution-time",
     "dispersion",
     "extinction",
     "allopatry",
@@ -140,8 +142,6 @@ rule setup_bigrig_config:
     output:
         config="{tree_iter}/{model_iter}/bigrig/config.yaml",
         model="{tree_iter}/{model_iter}/bigrig/model.json",
-    benchmark:
-        "benchmarks/{tree_iter}/{model_iter}/setup_bigrig.tsv",
     run:
         model = config["exp_models"][int(wildcards.model_iter)]
         bigrig_params = BigrigParameterSet(model)
@@ -167,15 +167,20 @@ rule setup_bigrig_config:
 
 rule run_bigrig:
     input:
-        "{tree_iter}/{model_iter}/bigrig/config.yaml",
+        "{tree_iter}/{model_iter}/{program_name}/config.yaml",
     output:
-        align="{tree_iter}/{model_iter}/bigrig/results.phy",
-        result="{tree_iter}/{model_iter}/bigrig/results.json",
-    shadow: "full"
+        align="{tree_iter}/{model_iter}/{program_name}/results.phy",
+        result="{tree_iter}/{model_iter}/{program_name}/results.json",
+    params:
+        command=lambda wildcards: [
+            program["binary"]
+            for program in config["programs"]
+            if program["name"] == wildcards.get("program_name")
+        ],
     log:
-        "{tree_iter}/{model_iter}/bigrig/bigrig.log",
+        "{tree_iter}/{model_iter}/{program_name}/bigrig.log",
     shell:
-        "~/wrk/hits/bigrig/bin/bigrig --config {input} &> {log}"
+        "{params.command} --config {input} &> {log}"
 
 
 for result_file in ["results.annotated.nwk", "results.json"]:
@@ -193,8 +198,6 @@ rule setup_lagrange_config:
         data="{tree_iter}/{model_iter}/bigrig/results.phy",
     output:
         config="{tree_iter}/{model_iter}/{program_name}/lagrange.conf",
-    benchmark:
-        "benchmarks/{tree_iter}/{model_iter}/{program_name}_setup_lagrange.tsv",
     run:
         lagrange_files = utils.configs.LagrangeNGFiles(
             config=output.config,
@@ -371,7 +374,6 @@ rule time_bigrig:
                 bigrig_log = logs.BigrigLog(
                     json_log=results_file, text_log=log_file
                 )
-
                 writer.writerow(bigrig_log.time_csv_row())
 
 

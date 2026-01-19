@@ -4,11 +4,12 @@ library(ape)
 library(optimx)
 library(rexpokit)
 library(cladoRcpp)
+require(parallel)
 library(BioGeoBEARS)
 
-treefile = "{tree}"
-datafile = "{data}"
-resultsfile = "{results}"
+treefile = args[1]
+datafile = args[2]
+resultsfile = args[3]
 
 BioGeoBEARS_run_object = define_BioGeoBEARS_run()
 BioGeoBEARS_run_object$trfn = treefile
@@ -18,7 +19,7 @@ BioGeoBEARS_run_object$force_sparse = FALSE
 
 BioGeoBEARS_run_object$return_condlikes_table = TRUE
 BioGeoBEARS_run_object$calc_TTL_loglike_from_condlikes_table = TRUE
-BioGeoBEARS_run_object$calc_ancprobs = TRUE    # get ancestral states from optim run
+BioGeoBEARS_run_object$calc_ancprobs = TRUE # get ancestral states from optim run
 
 res = bears_optim_run(BioGeoBEARS_run_object)
-save(res, file=resultsfile)
+save(res, file = resultsfile)
